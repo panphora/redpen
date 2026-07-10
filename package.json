@@ -1,0 +1,14 @@
+{
+  "name": "redpen",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Page review tools: element/area/region notes, freehand ink, and a COPY JSON hub for handing feedback to agents",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "esbuild src/index.js --bundle --format=iife --outfile=dist/redpen.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
