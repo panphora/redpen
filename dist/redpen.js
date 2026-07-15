@@ -529,7 +529,9 @@
 
   // src/draw.js
   if (!window.DrawTool) {
-    let origin = function() {
+    let speedT = function(v) {
+      return Math.max(0, Math.min(1, (v - CFG.slowSpeed) / (CFG.fastSpeed - CFG.slowSpeed)));
+    }, origin = function() {
       const f = document.getElementById("frame");
       if (!f) return { x: -scrollX, y: -scrollY };
       const r = f.getBoundingClientRect();
@@ -545,14 +547,20 @@
       canvas.style.height = innerHeight + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       redraw();
-    }, follow = function(x, y) {
+    }, follow = function(x, y, t) {
+      const dt = t - raw.t;
+      if (dt > 0) {
+        speed += (Math.hypot(x - raw.x, y - raw.y) / dt - speed) * 0.3;
+        raw = { x, y, t };
+      }
+      const radius = CFG.minLazyRadius + (CFG.lazyRadius - CFG.minLazyRadius) * speedT(speed);
       const dx = x - brush.x, dy = y - brush.y;
       const d = Math.hypot(dx, dy);
-      if (d <= CFG.lazyRadius) return;
-      const k = (d - CFG.lazyRadius) / d;
+      if (d <= radius) return;
+      const k = (d - radius) / d;
       brush.x += dx * k;
       brush.y += dy * k;
-      live.push({ x: brush.x, y: brush.y });
+      live.push({ x: brush.x, y: brush.y, v: speed });
     }, finishStroke = function() {
       if (!live) return;
       strokes.push(live.length > 1 ? smooth(live) : live);
@@ -567,7 +575,11 @@
         let d = Math.hypot(cur.x - prev.x, cur.y - prev.y);
         while (carry + d >= step) {
           const t = (step - carry) / d;
-          const p = { x: prev.x + (cur.x - prev.x) * t, y: prev.y + (cur.y - prev.y) * t };
+          const p = {
+            x: prev.x + (cur.x - prev.x) * t,
+            y: prev.y + (cur.y - prev.y) * t,
+            v: prev.v + (cur.v - prev.v) * t
+          };
           out.push(p);
           prev = p;
           d = Math.hypot(cur.x - prev.x, cur.y - prev.y);
@@ -590,9 +602,13 @@
         return { x: sx / n, y: sy / n };
       });
     }, smooth = function(pts) {
-      let p = resample(pts, CFG.resampleStep);
-      for (let k = 0; k < CFG.smoothPasses; k++) p = boxFilter(p, CFG.smoothWindow);
-      return p;
+      const p = resample(pts, CFG.resampleStep);
+      let s = p;
+      for (let k = 0; k < CFG.smoothPasses; k++) s = boxFilter(s, CFG.smoothWindow);
+      return p.map((q, i) => {
+        const a = CFG.slowBlend + (1 - CFG.slowBlend) * speedT(q.v);
+        return { x: q.x + (s[i].x - q.x) * a, y: q.y + (s[i].y - q.y) * a, v: q.v };
+      });
     }, drawStroke = function(pts) {
       ctx.lineWidth = CFG.width;
       ctx.strokeStyle = CFG.color;
@@ -630,32 +646,94 @@
     }, setOn = function(v) {
       on = v;
       canvas.style.pointerEvents = v ? "auto" : "none";
+    }, simplify = function(pts, eps) {
+      if (pts.length < 3) return pts.slice();
+      const keep = new Uint8Array(pts.length);
+      keep[0] = keep[pts.length - 1] = 1;
+      const stack = [[0, pts.length - 1]];
+      while (stack.length) {
+        const [a, b] = stack.pop();
+        const ax = pts[a].x, ay = pts[a].y;
+        const dx = pts[b].x - ax, dy = pts[b].y - ay;
+        const len = Math.hypot(dx, dy);
+        let max = 0, idx = -1;
+        for (let i = a + 1; i < b; i++) {
+          const d = len === 0 ? Math.hypot(pts[i].x - ax, pts[i].y - ay) : Math.abs((pts[i].x - ax) * dy - (pts[i].y - ay) * dx) / len;
+          if (d > max) {
+            max = d;
+            idx = i;
+          }
+        }
+        if (max > eps) {
+          keep[idx] = 1;
+          stack.push([a, idx], [idx, b]);
+        }
+      }
+      return pts.filter((_, i) => keep[i]);
+    }, bboxOf = function(pts) {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const p of pts) {
+        if (p.x < x0) x0 = p.x;
+        if (p.y < y0) y0 = p.y;
+        if (p.x > x1) x1 = p.x;
+        if (p.y > y1) y1 = p.y;
+      }
+      x0 = Math.round(x0);
+      y0 = Math.round(y0);
+      return [x0, y0, Math.round(x1) - x0, Math.round(y1) - y0];
+    }, isClosed = function(pts, bbox) {
+      if (pts.length < 3) return false;
+      const a = pts[0], b = pts[pts.length - 1];
+      const diag = Math.hypot(bbox[2], bbox[3]);
+      return Math.hypot(b.x - a.x, b.y - a.y) <= Math.max(2 * CFG.width, 0.15 * diag);
+    }, toPath = function(pts, closed) {
+      let px = Math.round(pts[0].x), py = Math.round(pts[0].y);
+      let d = `M ${px} ${py}`;
+      for (let i = 1; i < pts.length; i++) {
+        const x = Math.round(pts[i].x), y = Math.round(pts[i].y);
+        if (x === px && y === py) continue;
+        d += ` L ${x} ${y}`;
+        px = x;
+        py = y;
+      }
+      if (closed) d += " Z";
+      return d;
+    }, strokeObj = function(pts) {
+      const s = simplify(pts, CFG.simplifyTol);
+      const bbox = bboxOf(s);
+      const closed = isClosed(s, bbox);
+      return { d: toPath(s, closed), bbox, closed };
     }, getData = function() {
       const f = document.getElementById("frame");
-      const r3 = (n) => Math.round(n * 1e3) / 1e3;
-      if (f) {
-        const r = f.getBoundingClientRect();
-        return {
-          coords: "fractions 0-1 of the illustration frame",
-          frame: { w: Math.round(r.width), h: Math.round(r.height) },
-          strokes: strokes.map((s) => s.map((p) => [r3(p.x / r.width), r3(p.y / r.height)]))
-        };
-      }
-      const r1 = (n) => Math.round(n * 10) / 10;
-      return { coords: "px from document top-left", strokes: strokes.map((s) => s.map((p) => [r1(p.x), r1(p.y)])) };
+      const dims = f ? ((r) => [Math.round(r.width), Math.round(r.height)])(f.getBoundingClientRect()) : [document.documentElement.scrollWidth, document.documentElement.scrollHeight];
+      return {
+        coords: (f ? "integer px from the illustration frame top-left (the viewBox)" : "integer px from the document top-left (the viewBox)") + "; strokes in draw order, each path runs in draw direction",
+        viewBox: [0, 0, dims[0], dims[1]],
+        strokes: strokes.map(strokeObj)
+      };
     };
     const CFG = {
       width: 3,
       // stroke width, px
       color: "#000",
       lazyRadius: 4,
-      // brush trails the pointer by this many px; the live jitter killer
+      // brush trails the pointer by this many px at full speed; the live jitter killer
+      minLazyRadius: 1.5,
+      // brush trail when the pointer is moving slowly
       resampleStep: 3,
       // finished stroke gets one point per N px of arc length
       smoothWindow: 4,
       // box-filter half-width (points each side) on the finished stroke
-      smoothPasses: 2
+      smoothPasses: 2,
       // box-filter iterations
+      slowSpeed: 0.15,
+      // px/ms — at or below this, smoothing stays at slowBlend
+      fastSpeed: 1,
+      // px/ms — at or above this, smoothing applies in full
+      slowBlend: 0.3,
+      // fraction of the full smoothing kept for slow, deliberate strokes
+      simplifyTol: 1
+      // export-time RDP tolerance, px; points stay untouched internally
     };
     const canvas = document.createElement("canvas");
     canvas.dataset.laUi = "1";
@@ -683,6 +761,8 @@
     let on = false;
     window.addEventListener("resize", resize);
     window.addEventListener("scroll", () => redraw(), { passive: true });
+    let raw = null;
+    let speed = 0;
     canvas.addEventListener("pointerdown", (e) => {
       try {
         canvas.setPointerCapture(e.pointerId);
@@ -690,7 +770,9 @@
       }
       const o = origin();
       brush = { x: e.clientX - o.x, y: e.clientY - o.y };
-      live = [{ ...brush }];
+      raw = { ...brush, t: e.timeStamp };
+      speed = 0;
+      live = [{ ...brush, v: 0 }];
       redraw();
     });
     canvas.addEventListener("pointermove", (e) => {
@@ -698,7 +780,7 @@
       let events = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
       if (events.length === 0) events = [e];
       const o = origin();
-      for (const ev of events) follow(ev.clientX - o.x, ev.clientY - o.y);
+      for (const ev of events) follow(ev.clientX - o.x, ev.clientY - o.y, ev.timeStamp);
       redraw();
     });
     canvas.addEventListener("pointerup", finishStroke);

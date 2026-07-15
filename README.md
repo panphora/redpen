@@ -73,9 +73,18 @@ npm run build
         "region": { "x": 0.4, "y": 0.2, "w": 0.1, "h": 0.15 } }
     ]
   },
-  "draw": { "coords": "px from document top-left", "strokes": [] }
+  "draw": {
+    "coords": "integer px from the illustration frame top-left (the viewBox); strokes in draw order, each path runs in draw direction",
+    "viewBox": [0, 0, 560, 373],
+    "strokes": [
+      { "d": "M 120 340 L 180 300 L 240 342 Z", "bbox": [118, 298, 124, 84], "closed": true }
+    ]
+  }
 }
 ```
+
+Draw strokes export as SVG paths (`M`/`L`, `Z` when closed) in a stated
+`viewBox` — the `#frame` element when the page has one, else the document.
 
 Area items cap at 15 elements; a `truncated` count reports anything dropped.
 Elements inside position-fixed overlays (floating chips, toasts) are flagged
