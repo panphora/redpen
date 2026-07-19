@@ -1,27 +1,79 @@
 # redpen
 
 Page review tools for leaving structured feedback on any HTML page, built to hand
-that feedback to an agent as JSON. Three modules, one floating hub:
+that feedback to an agent as JSON.
+
+redpen is a **headless engine** plus a **default UI adapter**, shipped as two bundles:
+
+- `dist/redpen.js` — engine + default UI. The standalone experience: the bottom-right
+  hub bar, the `#laNotes` panel, global cmd+Z, and the `NotesTool` / `DrawTool` /
+  `FeedbackHub` console handles.
+- `dist/redpen-core.js` — the engine alone, as `window.Redpen.create(...)`. Zero
+  chrome, no global keyboard, no clipboard. The host owns all of that.
+
+## What the engine does
 
 - **notes** — click an element to pin a note to it (selector, tag/id/classes, text,
   ancestors). Drag a box to select an area: every element mostly inside the box is
   captured, anchored to their common ancestor. A drag that starts on a graphic
-  (canvas/img/video/svg) and stays inside it marks a region of that graphic instead,
-  stored as 0-1 fractions of its box.
-- **draw** — freehand ink overlay with lazy-brush smoothing and cmd+Z undo. Strokes
-  anchor to an `#frame` element when the page has one, else to the document, so they
-  stay glued to content while scrolling.
-- **feedback-hub** — the bottom-right bar: one toggle pill + clear button per tool,
-  include-checkboxes, and COPY JSON, which puts every tool's data on the clipboard
-  in one block. Only one tool is active at a time.
+  (canvas/img/video/svg) and stays inside it marks a region of that graphic.
+- **draw** — freehand ink with lazy-brush smoothing. Ink binds to the target it
+  started in and never rebinds, so a stroke may overshoot the panel edge and still
+  belong to that panel.
+- **targets** — a target is a first-class registered thing (`{id, selector|el, basis}`).
+  A panel is a target; any marked element can be a target. Feedback is keyed by
+  target id, and `show(id)` is the one call on panel switch.
 
-Everything persists to localStorage per page. All injected UI is marked
+Headless means no chrome, not no rendering: the engine still injects the capture
+overlay, the hover box, the numbered markers, the ink canvas and the per-target SVG
+ink overlays into `mount`. Those are the feedback medium. All injected UI is marked
 `data-la-ui` (so the tools ignore their own chrome) and `sap-ignore` (so Sap-powered
 pages leave it alone).
 
+## Coordinate bases
+
+A target declares one of two bases, and every note box and stroke point is stored
+in it:
+
+- `{type:'viewbox', viewBox:[0,0,1000,820]}` — the SVG's own user units, the same
+  coordinates the artwork is authored in, so an agent handed the feedback can turn
+  "move the left eye down" into a data edit near-directly. Screen ⟷ basis goes
+  through `getScreenCTM()`, so it is exact under any `preserveAspectRatio`,
+  DPR-proof and robust to letterboxing.
+- `{type:'fraction'}` — fractions 0-1 of the element's box. This is the region-note
+  model redpen has always used; the default `page` target uses it.
+
 ## Using it
 
-On a served page (modules):
+Headless, on a host that owns its own UI:
+
+```js
+const pen = Redpen.create({
+  key: 'la:' + location.pathname,  // storage namespace (default: location.pathname)
+  mount: document.getElementById('stage'),
+  storage: localStorage,           // injectable; file://-safe
+  identify: el => describe(el),    // optional
+});
+
+pen.addTarget({ id: 'p19', selector: '#p19', basis: { type: 'viewbox', viewBox: [0, 0, 1000, 820] } });
+pen.addEventListener('change', e => renderList(e.detail));
+pen.setMode('note');
+pen.show('p19');   // the one call on panel switch
+```
+
+Events: `change` `{action, item?}` · `item:add` `{item}` · `mode` `{mode}` ·
+`target` `{target}` · `layout` (markers were re-placed).
+
+Methods: `setMode(mode)` `mode()` `items(targetId?)` `strokes(targetId?)`
+`setNote(id, text)` `remove(id)` `undoStroke(targetId?)` `clear(targetId?)`
+`clearNotes(targetId?)` `clearStrokes(targetId?)` `data(targetId?)` `layout()`
+`destroy()` · `addTarget({id, selector|el, basis})` `removeTarget(id)`
+`targets()` `show(targetId|null)` `target()`.
+
+The engine binds **no** global keyboard and **no** clipboard. It exposes
+`undoStroke()`; the host routes keys and owns COPY.
+
+Standalone, on a served page (modules):
 
 ```html
 <script type="module" src="./notes.js"></script>
@@ -36,13 +88,56 @@ On a `file://` page (modules are blocked there), use the bundle:
 
 Console handles: `NotesTool`, `DrawTool`, `FeedbackHub` (e.g. `FeedbackHub.json()`).
 
+## Source layout
+
+```
+store.js         v3 blob: notes + strokes per target, one shared id counter, legacy migration
+targets.js       the target registry and the two coordinate bases (getScreenCTM / fractions)
+identify.js      cssPath / describe / resolve / nthOfType
+note-surface.js  capture overlay + markers + rubber-band drag + region/area capture
+draw-surface.js  ink canvas + lazy brush + smoothing + RDP + SVG path export
+ink-layer.js     finished strokes as SVG marks in one overlay <svg> per viewbox target
+engine.js        Redpen.create → RedpenEngine extends EventTarget
+ui.js            default adapter: hub bar + #laNotes list + global cmd+Z
+standalone.js    composes engine + ui into one page-wide instance
+index.js         engine + ui   → dist/redpen.js
+index-core.js    engine alone  → dist/redpen-core.js
+notes.js / draw.js / feedback-hub.js
+                 import-and-go entry points kept for the scene pages that symlink them
+```
+
+## Storage
+
+One blob per instance key, `redpen:<key>`:
+
+```json
+{ "v": 3, "counter": 42,
+  "targets": {
+    "p19": { "basis": { "type": "viewbox", "viewBox": [0, 0, 1000, 820] },
+             "notes":   [ { "id": 16, "text": "…", "kind": "region", "box": { "x": 388, "y": 600, "w": 250, "h": 60 } } ],
+             "strokes": [ { "id": 17, "points": [[392, 612]], "width": 3 } ] } } }
+```
+
+Notes and strokes share one counter, so an agent can be told "fix stroke 4 on p12".
+Legacy `la-notes:<path>` / `la-draw:<path>` fold into the `page` target on first
+load; the old keys are left in place. Old draw pixels keep a `px` flag until the
+first layout with a real box to normalize against, so nothing is silently discarded.
+
 ## Build
 
-`dist/redpen.js` is a checked-in IIFE bundle of `src/index.js`. After editing `src/`:
+`dist/redpen.js` and `dist/redpen-core.js` are checked-in IIFE bundles. After
+editing `src/`:
 
 ```bash
 npm run build
 ```
+
+## Test
+
+`test/two-target.html` is a dependency-free fixture: two `viewBox="0 0 1000 820"`
+SVGs side by side, each registered as a viewbox target, loaded with
+`dist/redpen-core.js`. Open it from `file://` and use the buttons to exercise
+show-filtering, overshoot binding, resize, persistence and `data()`.
 
 ## Consumers
 
@@ -54,38 +149,40 @@ npm run build
 
 ## JSON shape
 
+`COPY JSON` (and `pen.data()`) group by target, and each target states its own
+coordinate rule:
+
 ```json
 {
   "file": "index.html",
-  "notes": {
-    "coords": "region = fractions 0-1 of the target element box; area items also list the elements selected inside",
-    "items": [
-      { "id": 1, "note": "wrong verb", "type": "element",
-        "target": { "selector": "section.hero > h2", "tag": "h2", "text": "Your break-even rate", "ancestors": [] } },
-      { "id": 2, "note": "cramped", "type": "area",
-        "target": { "selector": "section.results", "tag": "section" },
-        "rect": { "w": 720, "h": 480 },
-        "region": { "x": 0.08, "y": 0.31, "w": 0.52, "h": 0.28 },
-        "elements": [ { "selector": "section.results > h2", "tag": "h2", "text": "…" } ] },
-      { "id": 3, "note": "smudge here", "type": "region",
-        "target": { "selector": "#gl", "tag": "canvas" },
-        "rect": { "w": 560, "h": 373 },
-        "region": { "x": 0.4, "y": 0.2, "w": 0.1, "h": 0.15 } }
-    ]
-  },
-  "draw": {
-    "coords": "integer px from the illustration frame top-left (the viewBox); strokes in draw order, each path runs in draw direction",
-    "viewBox": [0, 0, 560, 373],
-    "strokes": [
-      { "d": "M 120 340 L 180 300 L 240 342 Z", "bbox": [118, 298, 124, 84], "closed": true }
-    ]
+  "targets": {
+    "p19": {
+      "basis": "viewbox",
+      "coords": "note boxes and stroke paths are in the target SVG's own user units (its viewBox), …",
+      "viewBox": [0, 0, 1000, 820],
+      "notes": [
+        { "id": 1, "text": "eye sits too high", "kind": "region",
+          "box": { "x": 388, "y": 600, "w": 250, "h": 60 } }
+      ],
+      "strokes": [
+        { "id": 2, "d": "M 392 612 L 470 640 Z", "bbox": [392, 612, 78, 28], "closed": true, "width": 3 }
+      ]
+    },
+    "page": {
+      "basis": "fraction",
+      "coords": "note boxes are fractions of the target element box … stroke paths are integer px in the stated viewBox; …",
+      "viewBox": [0, 0, 1280, 577],
+      "notes": [
+        { "id": 3, "text": "wrong verb", "kind": "element",
+          "target": { "selector": "section.hero > h2", "tag": "h2", "text": "Your break-even rate" } }
+      ],
+      "strokes": []
+    }
   }
 }
 ```
 
-Draw strokes export as SVG paths (`M`/`L`, `Z` when closed) in a stated
-`viewBox` — the `#frame` element when the page has one, else the document.
-
-Area items cap at 15 elements; a `truncated` count reports anything dropped.
-Elements inside position-fixed overlays (floating chips, toasts) are flagged
-`"fixed": true` and never pick the note's anchor.
+Fraction-basis stroke paths are projected back into the target's current pixel box
+so the exported `d` stays readable px. Area items cap at 15 elements; a `truncated`
+count reports anything dropped. Elements inside position-fixed overlays (floating
+chips, toasts) are flagged `"fixed": true` and never pick the note's anchor.

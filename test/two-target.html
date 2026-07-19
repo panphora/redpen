@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>redpen — two viewbox targets</title>
+<style>
+  body { margin: 0; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; color: #17110C; background: #FDFDFC; }
+  header { padding: 14px 18px 0; }
+  h1 { font-size: 13px; margin: 0 0 4px; letter-spacing: .08em; text-transform: uppercase; }
+  p { margin: 0 0 10px; opacity: .65; max-width: 70ch; }
+  #stage { position: relative; display: flex; gap: 24px; padding: 8px 18px 18px; }
+  .panel { flex: 1 1 0; min-width: 0; }
+  .panel svg { width: 100%; height: auto; display: block; border: 1px solid #d8d2ca; background: #fff; }
+  .panel figcaption { padding: 4px 2px; opacity: .6; }
+  #bar { padding: 0 18px 18px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button { font: inherit; padding: 6px 12px; border: 1px solid #17110C; border-radius: 999px; background: #FDFDFC; cursor: pointer; }
+  button.on { background: #17110C; color: #FDFDFC; }
+  #out { padding: 0 18px 24px; white-space: pre; overflow-x: auto; font-size: 11px; opacity: .8; }
+</style>
+
+<header>
+  <h1>redpen · two viewbox targets</h1>
+  <p>Two SVGs, each registered as a viewbox target in its own 0 0 1000 820 user units.
+     Draw or mark in one, then use SHOW to filter. Ink binds to the target it started in,
+     even when it overshoots the edge.</p>
+</header>
+
+<div id="stage">
+  <figure class="panel">
+    <svg id="pA" viewBox="0 0 1000 820" aria-label="target A">
+      <rect x="60" y="60" width="880" height="700" fill="#f4efe8" stroke="#cdc5ba" stroke-width="4"/>
+      <circle cx="500" cy="410" r="200" fill="none" stroke="#b8b0a6" stroke-width="6"/>
+      <text x="500" y="425" text-anchor="middle" font-size="120" fill="#b8b0a6">A</text>
+    </svg>
+    <figcaption>target A · #pA</figcaption>
+  </figure>
+  <figure class="panel">
+    <svg id="pB" viewBox="0 0 1000 820" aria-label="target B">
+      <rect x="60" y="60" width="880" height="700" fill="#eef1f4" stroke="#bcc4cd" stroke-width="4"/>
+      <path d="M 200 650 L 500 200 L 800 650 Z" fill="none" stroke="#93a1b0" stroke-width="6"/>
+      <text x="500" y="425" text-anchor="middle" font-size="120" fill="#93a1b0">B</text>
+    </svg>
+    <figcaption>target B · #pB</figcaption>
+  </figure>
+</div>
+
+<div id="bar">
+  <button id="mNote">NOTE</button>
+  <button id="mDraw">DRAW</button>
+  <button id="sA">SHOW A</button>
+  <button id="sB">SHOW B</button>
+  <button id="sAll">SHOW ALL</button>
+  <button id="undo">UNDO STROKE</button>
+  <button id="clear">CLEAR</button>
+  <button id="dump">DATA</button>
+</div>
+<pre id="out"></pre>
+
+<script src="../dist/redpen-core.js"></script>
+<script>
+  const pen = Redpen.create({ key: 'two-target', mount: document.getElementById('stage') });
+  pen.addTarget({ id: 'A', selector: '#pA', basis: { type: 'viewbox', viewBox: [0, 0, 1000, 820] } });
+  pen.addTarget({ id: 'B', selector: '#pB', basis: { type: 'viewbox', viewBox: [0, 0, 1000, 820] } });
+
+  const $ = id => document.getElementById(id);
+  const out = $('out');
+
+  const sync = () => {
+    $('mNote').classList.toggle('on', pen.mode() === 'note');
+    $('mDraw').classList.toggle('on', pen.mode() === 'draw');
+    const t = pen.target();
+    $('sA').classList.toggle('on', t === 'A');
+    $('sB').classList.toggle('on', t === 'B');
+    $('sAll').classList.toggle('on', t === null);
+  };
+
+  $('mNote').onclick = () => pen.setMode(pen.mode() === 'note' ? null : 'note');
+  $('mDraw').onclick = () => pen.setMode(pen.mode() === 'draw' ? null : 'draw');
+  $('sA').onclick = () => pen.show('A');
+  $('sB').onclick = () => pen.show('B');
+  $('sAll').onclick = () => pen.show(null);
+  $('undo').onclick = () => pen.undoStroke();
+  $('clear').onclick = () => pen.clear();
+  $('dump').onclick = () => { out.textContent = JSON.stringify(pen.data(), null, 2); };
+
+  for (const n of ['change', 'mode', 'target', 'item:add']) pen.addEventListener(n, sync);
+  sync();
+
+  // the host owns the keyboard: the engine binds nothing globally
+  window.addEventListener('keydown', e => {
+    if (pen.mode() === 'draw' && (e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); pen.undoStroke(); }
+  });
+</script>
+</html>
