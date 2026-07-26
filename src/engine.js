@@ -16,6 +16,7 @@ import { createNoteSurface } from './note-surface.js';
 import { createDrawSurface, CFG, strokeObj } from './draw-surface.js';
 import { createInkLayer } from './ink-layer.js';
 import { describe, resolve } from './identify.js';
+import { collectContext } from './context.js';
 
 export { CFG, PAGE };
 
@@ -46,11 +47,14 @@ export function create(opts = {}) {
 
   const noteSurface = createNoteSurface({
     mount, targets, store, identify, visible,
-    addNote: (targetId, fields) => {
+    addNote: (targetId, fields, gesture) => {
       const g = store.group(targetId);
       const t = targets.get(targetId);
       if (t && !g.basis) g.basis = { ...t.basis };
-      const item = { id: store.nextId(), text: '', ...fields };
+      // the page's own answer about the state this note was made in, collected
+      // at creation because that state is gone by the time anyone reads the note
+      const context = gesture ? collectContext(gesture.el, gesture.info) : null;
+      const item = { id: store.nextId(), text: '', ...fields, ...(context ? { context } : {}) };
       g.notes.push(item);
       store.save();
       noteSurface.layout();
@@ -142,9 +146,11 @@ export function create(opts = {}) {
           id: n.id, text: n.text, kind: n.kind,
           ...(n.target ? { target: n.target } : {}),
           ...(n.box ? { box: n.box } : {}),
+          ...(n.point ? { point: n.point } : {}),
           ...(n.rect ? { rect: n.rect } : {}),
           ...(n.elements ? { elements: n.elements } : {}),
           ...(n.truncated ? { truncated: n.truncated } : {}),
+          ...(n.context ? { context: n.context } : {}),
         })),
         strokes: g.strokes.map(s => {
           // a legacy stroke not yet normalized is already in px

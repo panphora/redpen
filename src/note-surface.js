@@ -17,12 +17,20 @@ import { PAGE } from './targets.js';
 const round3 = n => Math.round(n * 1000) / 1000;
 const MAX_AREA_ELEMENTS = 15;
 
+// A tap on a pixel graphic has no sub-element to name, so it drops a pinpoint at
+// the exact spot instead of a note on the whole graphic. SVG is deliberately not
+// here: on artwork describe() names the shape under the cursor, which is real
+// information a bare point would throw away.
+const POINT_TAGS = new Set(['canvas', 'img', 'video']);
+const pointGraphic = el => !!el && POINT_TAGS.has(el.tagName.toLowerCase());
+
 const SURFACE_CSS = `
   .laMarkers { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99991; pointer-events: none; }
   .laInkLayer { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99990; pointer-events: none; }
   .laMarks { position: absolute; overflow: visible; pointer-events: none; }
   .laBox { position: absolute; border: 2px solid #e5484d; background: rgba(229, 72, 77, .12); box-sizing: border-box; }
   .laBox.el { background: rgba(229, 72, 77, .06); }
+  .laBox.laPoint { width: 13px; height: 13px; margin: -6px 0 0 -6px; border-radius: 50%; background: #e5484d; border-color: #FDFDFC; }
   .laBox .tag { position: absolute; top: -10px; left: -10px; background: #e5484d; color: #fff;
     font: 700 11px/16px -apple-system, sans-serif; text-align: center; min-width: 16px; height: 16px; border-radius: 8px; padding: 0 3px; }
   .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
@@ -89,6 +97,21 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
     };
   }
 
+  // a point note stores a fraction of its graphic's box, exactly as a region does
+  function screenPoint(t, note) {
+    const base = note.target ? resolve(note.target) : null;
+    const r = base ? base.getBoundingClientRect() : targets.rectOf(t);
+    if (!r || !r.width || !r.height) return null;
+    return { x: r.left + note.point.x * r.width, y: r.top + note.point.y * r.height };
+  }
+
+  // a point marker owns its size in css; only its centre is placed
+  function placePoint(el, x, y) {
+    const base = markers.getBoundingClientRect();
+    el.style.left = (x - base.left) + 'px';
+    el.style.top = (y - base.top) + 'px';
+  }
+
   function layout() {
     markers.querySelectorAll('.laBox').forEach(el => { if (el !== rubber) el.remove(); });
     for (const [id, g] of store.state.targets) {
@@ -97,6 +120,19 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
       const show = visible ? visible(id) : true;
       if (!show) continue;
       for (const note of g.notes) {
+        // point markers keep the .laBox class so the clear at the top of layout()
+        // sweeps them too
+        if (note.kind === 'point' && note.point) {
+          const p = screenPoint(t, note);
+          if (!p) continue;
+          const dot = document.createElement('div');
+          dot.className = 'laBox laPoint';
+          dot.dataset.laTarget = id;
+          dot.innerHTML = `<span class="tag">${note.id}</span>`;
+          placePoint(dot, p.x, p.y);
+          markers.appendChild(dot);
+          continue;
+        }
         const r = screenRect(t, note);
         if (!r) continue;
         const box = document.createElement('div');
@@ -184,6 +220,42 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
     return { x: round3(a.x), y: round3(a.y), w: round3(b.x - a.x), h: round3(b.y - a.y) };
   }
 
+  // What a context provider is handed: where the note was made, in client px, so
+  // a provider can ask its own scene what sits under that exact point. `box` is
+  // the gesture rect for a region or an area, null for a tap or a point.
+  function gestureOf(kind, r) {
+    return {
+      el: press.el,
+      info: {
+        kind, x: press.x, y: press.y, targetId: press.target.id,
+        box: r ? { x: r.left, y: r.top, w: r.width, h: r.height } : null,
+      },
+    };
+  }
+
+  // a tap: a pinpoint on a pixel graphic, a note on the element anywhere else.
+  // The point files exactly where a region drag on the same graphic files — under
+  // the page group, carrying the graphic's descriptor and its box — so both kinds
+  // read back through one rule.
+  function addTap() {
+    if (pointGraphic(press.basis)) {
+      const b = press.basis.getBoundingClientRect();
+      if (b.width && b.height) {
+        addNote(PAGE, {
+          kind: 'point',
+          target: describe(press.basis),
+          rect: { w: Math.round(b.width), h: Math.round(b.height) },
+          point: {
+            x: round3((press.x - b.left) / b.width),
+            y: round3((press.y - b.top) / b.height),
+          },
+        }, gestureOf('point'));
+        return;
+      }
+    }
+    addNote(press.target.id, { kind: 'element', target: describe(press.el) }, gestureOf('element'));
+  }
+
   overlay.addEventListener('pointerup', e => {
     if (!press) return;
     const t = press.target;
@@ -195,11 +267,11 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
       const graphic = press.basis && !press.area;
       const r = graphic ? clampedRegion(e) : freeRect(e);
       if (r.width <= 6 && r.height <= 6) {
-        addNote(t.id, { kind: 'element', target: describe(press.el) });
+        addTap();
       } else if (viewbox && graphic) {
         const box = viewboxRegion(t, r);
-        if (box) addNote(t.id, { kind: 'region', box });
-        else addNote(t.id, { kind: 'element', target: describe(press.el) });
+        if (box) addNote(t.id, { kind: 'region', box }, gestureOf('region', r));
+        else addNote(t.id, { kind: 'element', target: describe(press.el) }, gestureOf('element', r));
       } else if (graphic) {
         addNote(PAGE, {
           kind: 'region',
@@ -211,12 +283,12 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
             w: round3(r.width / r.b.width),
             h: round3(r.height / r.b.height),
           },
-        });
+        }, gestureOf('region', r));
       } else {
-        addAreaNote(r);
+        addAreaNote(r, gestureOf('area', r));
       }
     } else {
-      addNote(t.id, { kind: 'element', target: describe(press.el) });
+      addTap();
     }
     press = null;
   });
@@ -274,7 +346,7 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
     return false;
   }
 
-  function addAreaNote(r) {
+  function addAreaNote(r, gesture) {
     const els = elementsInArea(r);
     const fixed = new Set(els.filter(inFixed));
     const flow = els.filter(el => !fixed.has(el));
@@ -303,7 +375,7 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
         return d;
       }),
       ...(truncated ? { truncated } : {}),
-    });
+    }, gesture);
   }
 
   // ---------- surface control ----------

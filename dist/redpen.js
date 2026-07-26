@@ -329,12 +329,15 @@
   // src/note-surface.js
   var round3 = (n) => Math.round(n * 1e3) / 1e3;
   var MAX_AREA_ELEMENTS = 15;
+  var POINT_TAGS = /* @__PURE__ */ new Set(["canvas", "img", "video"]);
+  var pointGraphic = (el) => !!el && POINT_TAGS.has(el.tagName.toLowerCase());
   var SURFACE_CSS = `
   .laMarkers { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99991; pointer-events: none; }
   .laInkLayer { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99990; pointer-events: none; }
   .laMarks { position: absolute; overflow: visible; pointer-events: none; }
   .laBox { position: absolute; border: 2px solid #e5484d; background: rgba(229, 72, 77, .12); box-sizing: border-box; }
   .laBox.el { background: rgba(229, 72, 77, .06); }
+  .laBox.laPoint { width: 13px; height: 13px; margin: -6px 0 0 -6px; border-radius: 50%; background: #e5484d; border-color: #FDFDFC; }
   .laBox .tag { position: absolute; top: -10px; left: -10px; background: #e5484d; color: #fff;
     font: 700 11px/16px -apple-system, sans-serif; text-align: center; min-width: 16px; height: 16px; border-radius: 8px; padding: 0 3px; }
   .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
@@ -392,6 +395,17 @@
         height: note.box.h * r.height
       };
     }
+    function screenPoint(t, note) {
+      const base = note.target ? resolve(note.target) : null;
+      const r = base ? base.getBoundingClientRect() : targets.rectOf(t);
+      if (!r || !r.width || !r.height) return null;
+      return { x: r.left + note.point.x * r.width, y: r.top + note.point.y * r.height };
+    }
+    function placePoint(el, x, y) {
+      const base = markers.getBoundingClientRect();
+      el.style.left = x - base.left + "px";
+      el.style.top = y - base.top + "px";
+    }
     function layout() {
       markers.querySelectorAll(".laBox").forEach((el) => {
         if (el !== rubber) el.remove();
@@ -402,6 +416,17 @@
         const show = visible ? visible(id) : true;
         if (!show) continue;
         for (const note of g.notes) {
+          if (note.kind === "point" && note.point) {
+            const p = screenPoint(t, note);
+            if (!p) continue;
+            const dot = document.createElement("div");
+            dot.className = "laBox laPoint";
+            dot.dataset.laTarget = id;
+            dot.innerHTML = `<span class="tag">${note.id}</span>`;
+            placePoint(dot, p.x, p.y);
+            markers.appendChild(dot);
+            continue;
+          }
           const r = screenRect(t, note);
           if (!r) continue;
           const box = document.createElement("div");
@@ -490,6 +515,36 @@
       if (!a || !b) return null;
       return { x: round3(a.x), y: round3(a.y), w: round3(b.x - a.x), h: round3(b.y - a.y) };
     }
+    function gestureOf(kind, r) {
+      return {
+        el: press.el,
+        info: {
+          kind,
+          x: press.x,
+          y: press.y,
+          targetId: press.target.id,
+          box: r ? { x: r.left, y: r.top, w: r.width, h: r.height } : null
+        }
+      };
+    }
+    function addTap() {
+      if (pointGraphic(press.basis)) {
+        const b = press.basis.getBoundingClientRect();
+        if (b.width && b.height) {
+          addNote(PAGE, {
+            kind: "point",
+            target: describe2(press.basis),
+            rect: { w: Math.round(b.width), h: Math.round(b.height) },
+            point: {
+              x: round3((press.x - b.left) / b.width),
+              y: round3((press.y - b.top) / b.height)
+            }
+          }, gestureOf("point"));
+          return;
+        }
+      }
+      addNote(press.target.id, { kind: "element", target: describe2(press.el) }, gestureOf("element"));
+    }
     overlay.addEventListener("pointerup", (e) => {
       if (!press) return;
       const t = press.target;
@@ -501,11 +556,11 @@
         const graphic = press.basis && !press.area;
         const r = graphic ? clampedRegion(e) : freeRect(e);
         if (r.width <= 6 && r.height <= 6) {
-          addNote(t.id, { kind: "element", target: describe2(press.el) });
+          addTap();
         } else if (viewbox && graphic) {
           const box = viewboxRegion(t, r);
-          if (box) addNote(t.id, { kind: "region", box });
-          else addNote(t.id, { kind: "element", target: describe2(press.el) });
+          if (box) addNote(t.id, { kind: "region", box }, gestureOf("region", r));
+          else addNote(t.id, { kind: "element", target: describe2(press.el) }, gestureOf("element", r));
         } else if (graphic) {
           addNote(PAGE, {
             kind: "region",
@@ -517,12 +572,12 @@
               w: round3(r.width / r.b.width),
               h: round3(r.height / r.b.height)
             }
-          });
+          }, gestureOf("region", r));
         } else {
-          addAreaNote(r);
+          addAreaNote(r, gestureOf("area", r));
         }
       } else {
-        addNote(t.id, { kind: "element", target: describe2(press.el) });
+        addTap();
       }
       press = null;
     });
@@ -566,7 +621,7 @@
       }
       return false;
     }
-    function addAreaNote(r) {
+    function addAreaNote(r, gesture) {
       const els = elementsInArea(r);
       const fixed = new Set(els.filter(inFixed));
       const flow = els.filter((el) => !fixed.has(el));
@@ -595,7 +650,7 @@
           return d;
         }),
         ...truncated ? { truncated } : {}
-      });
+      }, gesture);
     }
     function setActive2(v) {
       overlay.style.display = v ? "block" : "none";
@@ -995,6 +1050,34 @@
     return { render, drop, destroy, anchor };
   }
 
+  // src/context.js
+  var ATTR = "data-redpen-context";
+  function collectContext(startEl, info) {
+    const chain = [];
+    for (let el = startEl; el && el.nodeType === 1; el = el.parentElement) chain.push(el);
+    let out = null;
+    for (const el of chain.reverse()) {
+      let v = el.redpenContext;
+      if (typeof v === "function") {
+        try {
+          v = v(info);
+        } catch (err) {
+          console.warn("[redpen] context provider threw", err);
+          v = null;
+        }
+      }
+      if (!v && el.hasAttribute(ATTR)) {
+        try {
+          v = JSON.parse(el.getAttribute(ATTR));
+        } catch {
+          v = null;
+        }
+      }
+      if (v && typeof v === "object") out = { ...out || {}, ...v };
+    }
+    return out;
+  }
+
   // src/engine.js
   function create(opts = {}) {
     const key = opts.key ?? location.pathname;
@@ -1020,11 +1103,12 @@
       store,
       identify,
       visible,
-      addNote: (targetId, fields) => {
+      addNote: (targetId, fields, gesture) => {
         const g = store.group(targetId);
         const t = targets.get(targetId);
         if (t && !g.basis) g.basis = { ...t.basis };
-        const item = { id: store.nextId(), text: "", ...fields };
+        const context = gesture ? collectContext(gesture.el, gesture.info) : null;
+        const item = { id: store.nextId(), text: "", ...fields, ...context ? { context } : {} };
         g.notes.push(item);
         store.save();
         noteSurface.layout();
@@ -1105,9 +1189,11 @@
             kind: n.kind,
             ...n.target ? { target: n.target } : {},
             ...n.box ? { box: n.box } : {},
+            ...n.point ? { point: n.point } : {},
             ...n.rect ? { rect: n.rect } : {},
             ...n.elements ? { elements: n.elements } : {},
-            ...n.truncated ? { truncated: n.truncated } : {}
+            ...n.truncated ? { truncated: n.truncated } : {},
+            ...n.context ? { context: n.context } : {}
           })),
           strokes: g.strokes.map((s) => {
             const k = s.px ? { x: 1, y: 1 } : scale;
@@ -1464,7 +1550,7 @@
   var instance = null;
   function pen() {
     if (!instance) {
-      instance = create({ key: location.pathname, mount: document.body });
+      instance = create({ key: window.REDPEN_KEY ?? location.pathname, mount: document.body });
       instance.addEventListener("mode", syncPills);
       attachKeys(instance);
       setDataSource((include) => {

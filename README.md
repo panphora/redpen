@@ -16,7 +16,9 @@ redpen is a **headless engine** plus a **default UI adapter**, shipped as two bu
 - **notes** — click an element to pin a note to it (selector, tag/id/classes, text,
   ancestors). Drag a box to select an area: every element mostly inside the box is
   captured, anchored to their common ancestor. A drag that starts on a graphic
-  (canvas/img/video/svg) and stays inside it marks a region of that graphic.
+  (canvas/img/video/svg) and stays inside it marks a region of that graphic. A tap on
+  a pixel graphic (canvas/img/video) drops a pinpoint at the exact spot instead; svg
+  keeps the element note, because there the tapped shape has a name worth recording.
 - **draw** — freehand ink with lazy-brush smoothing. Ink binds to the target it
   started in and never rebinds, so a stroke may overshoot the panel edge and still
   belong to that panel.
@@ -29,6 +31,39 @@ overlay, the hover box, the numbered markers, the ink canvas and the per-target 
 ink overlays into `mount`. Those are the feedback medium. All injected UI is marked
 `data-la-ui` (so the tools ignore their own chrome) and `sap-ignore` (so Sap-powered
 pages leave it alone).
+
+## Note context (the page enriches its own notes)
+
+A note is only reproducible if it carries the state it was made in. redpen does not
+know what that state is, so it asks: on every note it walks from the annotated
+element up to `<html>` and collects a contribution from each ancestor, then stores
+and exports it verbatim under `note.context`. redpen interprets none of it.
+
+Two ways to contribute, both found by the same walk:
+
+```js
+// dynamic — called at note-creation, handed the gesture
+mount.redpenContext = info => ({ myApp: { route: location.pathname, t: clock.now() } });
+```
+
+```html
+<!-- static — a plain HTML page enriches its own notes with no script at all -->
+<div data-redpen-context='{"myApp":{"build":"a41"}}'>…</div>
+```
+
+`info` is `{ kind, x, y, box, targetId }`: `kind` is the note kind, `x`/`y` the
+gesture point in client px, `box` the gesture rect `{x, y, w, h}` in client px for a
+region or an area (null for a tap or a point), `targetId` the registered target the
+gesture bound to.
+
+Namespace your payload under a key you own. The merge is one level deep and runs
+outermost first, so an inner provider replaces an outer one's namespace wholesale
+rather than merging into it. A provider that throws costs its own contribution and
+nothing else.
+
+Storage keys: the default is `location.pathname`. A host whose pages differ only by
+query string sets `window.REDPEN_KEY` before loading `dist/redpen.js` (or passes
+`key` to `Redpen.create`) so each subject gets its own notes blob.
 
 ## Coordinate bases
 

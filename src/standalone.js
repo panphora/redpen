@@ -15,7 +15,9 @@ let instance = null;
 
 export function pen() {
   if (!instance) {
-    instance = create({ key: location.pathname, mount: document.body });
+    // a host whose pages differ only by query string (one page, many subjects)
+    // sets window.REDPEN_KEY before this bundle loads to get its own notes blob
+    instance = create({ key: window.REDPEN_KEY ?? location.pathname, mount: document.body });
     instance.addEventListener('mode', syncPills);
     attachKeys(instance);
     // COPY JSON exports every target; the include-checkboxes drop sections
