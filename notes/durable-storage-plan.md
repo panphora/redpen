@@ -1,5 +1,8 @@
 # Plan: redpen stops losing notes when storage fills up
 
+**✅ SHIPPED 2026-07-26** — built, dual-reviewed, review findings fixed and verified against
+pre-fix control bundles. Pushed as `67548f6`.
+
 **Decided 2026-07-26** via the questions form. All eight answers are locked; seven took the
 recommendation, one did not: **storage moves to IndexedDB** rather than staying on the single
 localStorage blob.
@@ -46,9 +49,17 @@ moment after `create()`. In practice nothing is affected, because redpen's own p
 the `change` event and the engine already runs a `settle()` repaint loop for exactly this reason.
 A new `change` action, `load`, marks the moment.
 
-**Notes made during that window are rescued, not dropped.** Vanishingly rare (the tool starts
-switched off), but if any exist when the stored blob lands they are re-numbered above the stored
-counter and appended, so ids can never collide.
+**Nothing is written before hydration, and no gesture is possible before it either.** The first
+cut tried to rescue notes made in that window by renumbering them above the stored counter. Both
+reviewers found that rescue is where the data loss lives (see below), so the window is closed
+instead: the store refuses to write until the read lands, and the note and draw surfaces stay
+inactive until then. The user has to click NOTES first, which takes far longer than the read, so
+the window is unreachable in practice rather than merely unlikely.
+
+**A read that fails is not a store that is empty.** If IndexedDB cannot be read, redpen neither
+adopts the stale localStorage copy nor writes anything: the store goes read-only and reports it
+through the same channel a failed write uses. Overwriting a store you could not read is how one
+transient abort becomes permanent loss.
 
 **Writes coalesce.** One write in flight at a time with the latest state pending, so holding down
 a key in a note field does not queue a hundred transactions.
@@ -76,3 +87,42 @@ consumer"). No consumer API is removed; one is added (`pen.saveFailed()`).
   someone's feedback.
 - The stale localStorage blob is not deleted. It stops growing, and keeping it means a rollback
   loses nothing.
+
+## What the review changed
+
+Two independent reviews ran on the first cut (a Claude reviewer and a Codex reviewer, both
+read-only). Both landed on the same root cause wearing three different hats: **the store accepted
+mutations while it was still empty.** Three data-loss paths followed from it.
+
+1. A note made before hydration persisted a one-note blob **over ten stored ones**. The queued
+   snapshot committed after the read restored the old data, erasing it.
+2. A `clear()` in that window undid itself: hydration put the cleared notes back on screen while
+   the queued empty snapshot erased them durably.
+3. A **failed** IndexedDB read fell through to the stale localStorage copy and wrote it over newer
+   IndexedDB data. One transient abort, permanent loss.
+
+The fix is the window closing, not four patches. `drain()` and `rescue()` were deleted outright,
+which also took two lesser findings with them (rescue renumbered ids the host had already been
+told about, and a drained group lost its coordinate `basis`). Also fixed: `normalizeOnce` was
+firing against the empty pre-hydration store, so legacy `la-draw:` pixel strokes were never being
+converted to fractions; `settle()` scheduled no retries because it saw an empty store, and now
+re-runs on load; `onSaveError` honours `destroyed`, so a write that rejects after `destroy()` can
+no longer arm an unload guard nothing is left to remove; a panel attached after a failure starts
+red; and a connection that opens late after `onblocked` is closed rather than leaked.
+
+**Verified against pre-fix control bundles**, so every bug was proven to reproduce before being
+proven fixed. Forced hydration race: stored and memory agree at 10 notes (control stored 1, lost
+10). Forced read failure: IndexedDB byte-identical at 5 notes, panel red, no write attempted
+(control overwrote with the 1 stale note). Legacy px strokes normalize again (`px` gone,
+fractional points). Destroy during a failed write leaves `defaultPrevented === false`. claylines
+untouched: selftest 58/58, parity 0 differing pixels across 1311 samples.
+
+## Known open
+
+- **A final keystroke can be lost on tab close.** localStorage committed synchronously; an
+  IndexedDB transaction does not. Typing in a note field and immediately closing the tab can drop
+  the last few characters. Everything already committed is safe. Fixable with a `pagehide`
+  best-effort flush if it ever actually bites.
+- **Multi-tab is last-write-wins on the whole blob.** Two tabs on the same key each write
+  everything, so the loser's changes are gone. Unchanged from the localStorage behaviour it
+  replaces, and not made worse by this change.
