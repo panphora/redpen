@@ -30,7 +30,7 @@ const SURFACE_CSS = `
   .laMarks { position: absolute; overflow: visible; pointer-events: none; }
   .laBox { position: absolute; border: 2px solid #e5484d; background: rgba(229, 72, 77, .12); box-sizing: border-box; }
   .laBox.el { background: rgba(229, 72, 77, .06); }
-  .laBox.laPoint { width: 13px; height: 13px; margin: -6px 0 0 -6px; border-radius: 50%; background: #e5484d; border-color: #FDFDFC; }
+  .laBox.laPoint { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: #e5484d; border-color: #FDFDFC; }
   .laBox .tag { position: absolute; top: -10px; left: -10px; background: #e5484d; color: #fff;
     font: 700 11px/16px -apple-system, sans-serif; text-align: center; min-width: 16px; height: 16px; border-radius: 8px; padding: 0 3px; }
   .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
@@ -100,6 +100,9 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
   // a point note stores a fraction of its graphic's box, exactly as a region does
   function screenPoint(t, note) {
     const base = note.target ? resolve(note.target) : null;
+    // a dot placed against the wrong box still looks like a real annotation, so a
+    // point whose graphic has gone is drawn nowhere rather than somewhere plausible
+    if (note.target && !base) return null;
     const r = base ? base.getBoundingClientRect() : targets.rectOf(t);
     if (!r || !r.width || !r.height) return null;
     return { x: r.left + note.point.x * r.width, y: r.top + note.point.y * r.height };
@@ -238,7 +241,7 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
   // the page group, carrying the graphic's descriptor and its box — so both kinds
   // read back through one rule.
   function addTap() {
-    if (pointGraphic(press.basis)) {
+    if (pointGraphic(press.basis) && !press.area) {
       const b = press.basis.getBoundingClientRect();
       if (b.width && b.height) {
         addNote(PAGE, {
@@ -258,6 +261,7 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
 
   overlay.addEventListener('pointerup', e => {
     if (!press) return;
+    try {
     const t = press.target;
     const viewbox = targets.isViewbox(t);
     if (rubber) {
@@ -290,7 +294,11 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
     } else {
       addTap();
     }
-    press = null;
+    } finally {
+      // a note that failed to save must not leave the gesture armed, or the next
+      // bare pointermove starts a rubber band and files a phantom note
+      press = null;
+    }
   });
 
   overlay.addEventListener('pointercancel', () => {

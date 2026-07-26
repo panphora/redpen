@@ -24,15 +24,29 @@ export function collectContext(startEl, info) {
   for (let el = startEl; el && el.nodeType === 1; el = el.parentElement) chain.push(el);
   let out = null;
   for (const el of chain.reverse()) {
-    let v = el.redpenContext;
-    if (typeof v === 'function') {
-      // a throwing provider costs the host its context, never the note itself
-      try { v = v(info); } catch (err) { console.warn('[redpen] context provider threw', err); v = null; }
+    // Every step is guarded, not just the call. A throwing getter, an exotic
+    // property, or a spread trap costs the host its contribution and nothing
+    // else: a note is never lost because a page misbehaved.
+    try {
+      let v = el.redpenContext;
+      if (typeof v === 'function') v = v(info);
+      if (!v && el.hasAttribute(ATTR)) {
+        try { v = JSON.parse(el.getAttribute(ATTR)); } catch { v = null; }
+      }
+      if (v && typeof v === 'object') out = { ...(out || {}), ...v };
+    } catch (err) {
+      console.warn('[redpen] context provider failed', el, err);
     }
-    if (!v && el.hasAttribute(ATTR)) {
-      try { v = JSON.parse(el.getAttribute(ATTR)); } catch { v = null; }
-    }
-    if (v && typeof v === 'object') out = { ...(out || {}), ...v };
   }
-  return out;
+  if (out === null) return null;
+  // The note is persisted with a bare JSON.stringify, so anything that cannot
+  // survive that — a cycle, a DOM node, a BigInt — has to die HERE. Letting one
+  // through makes every future save throw with the bad note already in the
+  // array, which loses the notes silently and forever.
+  try {
+    return JSON.parse(JSON.stringify(out));
+  } catch (err) {
+    console.warn('[redpen] context dropped: not JSON-serializable', err);
+    return null;
+  }
 }

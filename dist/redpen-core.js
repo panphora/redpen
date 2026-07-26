@@ -337,7 +337,7 @@
   .laMarks { position: absolute; overflow: visible; pointer-events: none; }
   .laBox { position: absolute; border: 2px solid #e5484d; background: rgba(229, 72, 77, .12); box-sizing: border-box; }
   .laBox.el { background: rgba(229, 72, 77, .06); }
-  .laBox.laPoint { width: 13px; height: 13px; margin: -6px 0 0 -6px; border-radius: 50%; background: #e5484d; border-color: #FDFDFC; }
+  .laBox.laPoint { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: #e5484d; border-color: #FDFDFC; }
   .laBox .tag { position: absolute; top: -10px; left: -10px; background: #e5484d; color: #fff;
     font: 700 11px/16px -apple-system, sans-serif; text-align: center; min-width: 16px; height: 16px; border-radius: 8px; padding: 0 3px; }
   .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
@@ -397,6 +397,7 @@
     }
     function screenPoint(t, note) {
       const base = note.target ? resolve(note.target) : null;
+      if (note.target && !base) return null;
       const r = base ? base.getBoundingClientRect() : targets.rectOf(t);
       if (!r || !r.width || !r.height) return null;
       return { x: r.left + note.point.x * r.width, y: r.top + note.point.y * r.height };
@@ -528,7 +529,7 @@
       };
     }
     function addTap() {
-      if (pointGraphic(press.basis)) {
+      if (pointGraphic(press.basis) && !press.area) {
         const b = press.basis.getBoundingClientRect();
         if (b.width && b.height) {
           addNote(PAGE, {
@@ -547,39 +548,42 @@
     }
     overlay.addEventListener("pointerup", (e) => {
       if (!press) return;
-      const t = press.target;
-      const viewbox = targets.isViewbox(t);
-      if (rubber) {
-        escapeCheck(e);
-        rubber.remove();
-        rubber = null;
-        const graphic = press.basis && !press.area;
-        const r = graphic ? clampedRegion(e) : freeRect(e);
-        if (r.width <= 6 && r.height <= 6) {
-          addTap();
-        } else if (viewbox && graphic) {
-          const box = viewboxRegion(t, r);
-          if (box) addNote(t.id, { kind: "region", box }, gestureOf("region", r));
-          else addNote(t.id, { kind: "element", target: describe2(press.el) }, gestureOf("element", r));
-        } else if (graphic) {
-          addNote(PAGE, {
-            kind: "region",
-            target: describe2(press.basis),
-            rect: { w: Math.round(r.b.width), h: Math.round(r.b.height) },
-            box: {
-              x: round3((r.left - r.b.left) / r.b.width),
-              y: round3((r.top - r.b.top) / r.b.height),
-              w: round3(r.width / r.b.width),
-              h: round3(r.height / r.b.height)
-            }
-          }, gestureOf("region", r));
+      try {
+        const t = press.target;
+        const viewbox = targets.isViewbox(t);
+        if (rubber) {
+          escapeCheck(e);
+          rubber.remove();
+          rubber = null;
+          const graphic = press.basis && !press.area;
+          const r = graphic ? clampedRegion(e) : freeRect(e);
+          if (r.width <= 6 && r.height <= 6) {
+            addTap();
+          } else if (viewbox && graphic) {
+            const box = viewboxRegion(t, r);
+            if (box) addNote(t.id, { kind: "region", box }, gestureOf("region", r));
+            else addNote(t.id, { kind: "element", target: describe2(press.el) }, gestureOf("element", r));
+          } else if (graphic) {
+            addNote(PAGE, {
+              kind: "region",
+              target: describe2(press.basis),
+              rect: { w: Math.round(r.b.width), h: Math.round(r.b.height) },
+              box: {
+                x: round3((r.left - r.b.left) / r.b.width),
+                y: round3((r.top - r.b.top) / r.b.height),
+                w: round3(r.width / r.b.width),
+                h: round3(r.height / r.b.height)
+              }
+            }, gestureOf("region", r));
+          } else {
+            addAreaNote(r, gestureOf("area", r));
+          }
         } else {
-          addAreaNote(r, gestureOf("area", r));
+          addTap();
         }
-      } else {
-        addTap();
+      } finally {
+        press = null;
       }
-      press = null;
     });
     overlay.addEventListener("pointercancel", () => {
       rubber?.remove();
@@ -1057,25 +1061,28 @@
     for (let el = startEl; el && el.nodeType === 1; el = el.parentElement) chain.push(el);
     let out = null;
     for (const el of chain.reverse()) {
-      let v = el.redpenContext;
-      if (typeof v === "function") {
-        try {
-          v = v(info);
-        } catch (err) {
-          console.warn("[redpen] context provider threw", err);
-          v = null;
+      try {
+        let v = el.redpenContext;
+        if (typeof v === "function") v = v(info);
+        if (!v && el.hasAttribute(ATTR)) {
+          try {
+            v = JSON.parse(el.getAttribute(ATTR));
+          } catch {
+            v = null;
+          }
         }
+        if (v && typeof v === "object") out = { ...out || {}, ...v };
+      } catch (err) {
+        console.warn("[redpen] context provider failed", el, err);
       }
-      if (!v && el.hasAttribute(ATTR)) {
-        try {
-          v = JSON.parse(el.getAttribute(ATTR));
-        } catch {
-          v = null;
-        }
-      }
-      if (v && typeof v === "object") out = { ...out || {}, ...v };
     }
-    return out;
+    if (out === null) return null;
+    try {
+      return JSON.parse(JSON.stringify(out));
+    } catch (err) {
+      console.warn("[redpen] context dropped: not JSON-serializable", err);
+      return null;
+    }
   }
 
   // src/engine.js
