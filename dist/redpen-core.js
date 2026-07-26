@@ -132,13 +132,94 @@
     };
   }
 
+  // src/backend.js
+  var DB = "redpen";
+  var STORE = "blobs";
+  function openDB() {
+    return new Promise((resolve2) => {
+      let req;
+      try {
+        if (typeof indexedDB === "undefined" || !indexedDB) return resolve2(null);
+        req = indexedDB.open(DB, 1);
+      } catch {
+        return resolve2(null);
+      }
+      let settled = false;
+      const settle = (db) => {
+        if (settled) {
+          db?.close?.();
+          return;
+        }
+        settled = true;
+        resolve2(db);
+      };
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      };
+      req.onsuccess = () => settle(req.result);
+      req.onerror = () => settle(null);
+      req.onblocked = () => settle(null);
+    });
+  }
+  function transact(db, mode, fn) {
+    return new Promise((resolve2, reject) => {
+      let t, req;
+      try {
+        t = db.transaction(STORE, mode);
+        req = fn(t.objectStore(STORE));
+      } catch (err) {
+        return reject(err);
+      }
+      t.oncomplete = () => resolve2(req ? req.result : void 0);
+      t.onabort = () => reject(t.error || new Error("redpen: idb transaction aborted"));
+      t.onerror = () => reject(t.error || new Error("redpen: idb transaction failed"));
+    });
+  }
+  function createBackend({ key, storage }) {
+    const blobKey = "redpen:" + key;
+    const dbReady = openDB();
+    function readLocal() {
+      try {
+        return JSON.parse(storage.getItem(blobKey) || "null");
+      } catch {
+        return null;
+      }
+    }
+    return {
+      // The durable blob, or null. Never rejects: a read that fails is an empty
+      // redpen, not a broken page.
+      async read() {
+        const db = await dbReady;
+        if (!db) return readLocal();
+        const found = await transact(db, "readonly", (s) => s.get(blobKey));
+        if (found) return found;
+        const legacy = readLocal();
+        if (legacy) {
+          try {
+            await transact(db, "readwrite", (s) => s.put(legacy, blobKey));
+          } catch {
+          }
+        }
+        return legacy;
+      },
+      // REJECTS on failure, deliberately: the caller has to be able to tell the
+      // user their notes are not being kept.
+      async write(blob) {
+        const db = await dbReady;
+        if (!db) return storage.setItem(blobKey, JSON.stringify(blob));
+        await transact(db, "readwrite", (s) => s.put(blob, blobKey));
+      }
+    };
+  }
+
   // src/store.js
   var r1 = (n) => Math.round(n * 10) / 10;
   var r4 = (n) => Math.round(n * 1e4) / 1e4;
-  function createStore({ key, storage }) {
-    const blobKey = "redpen:" + key;
+  function createStore({ key, storage, onLoad, onSaveError }) {
     const legacyNotesKey = "la-notes:" + key;
     const legacyDrawKey = "la-draw:" + key;
+    const backend = createBackend({ key, storage });
     const state = { counter: 0, targets: /* @__PURE__ */ new Map() };
     function group(id) {
       let g = state.targets.get(id);
@@ -148,12 +229,7 @@
       }
       return g;
     }
-    function readBlob() {
-      let blob = null;
-      try {
-        blob = JSON.parse(storage.getItem(blobKey) || "null");
-      } catch {
-      }
+    function adoptBlob(blob) {
       if (!blob || blob.v !== 3) return false;
       state.counter = blob.counter || 0;
       for (const [id, g] of Object.entries(blob.targets || {})) {
@@ -224,9 +300,39 @@
       }
       return changed;
     }
-    const hadV3 = readBlob();
-    const migrated = hadV3 ? false : migrateLegacy();
     group(PAGE);
+    let loaded = false;
+    let readFailed = false;
+    (async function hydrate() {
+      let blob = null;
+      try {
+        blob = await backend.read();
+      } catch (err) {
+        readFailed = true;
+        onSaveError?.(err);
+      }
+      const migrated = !readFailed && !adoptBlob(blob) && migrateLegacy();
+      loaded = true;
+      onLoad?.({ migrated, readFailed });
+      flush();
+    })();
+    let dirty = false, writing = false;
+    function flush() {
+      if (writing || !dirty || !loaded || readFailed) return;
+      dirty = false;
+      writing = true;
+      backend.write(toJSON()).then(
+        () => {
+          writing = false;
+          flush();
+        },
+        (err) => {
+          writing = false;
+          onSaveError?.(err);
+          flush();
+        }
+      );
+    }
     function toJSON() {
       const targets = {};
       for (const [id, g] of state.targets) {
@@ -247,11 +353,12 @@
     return {
       state,
       group,
-      migrated,
+      loaded: () => loaded,
       normalizePixelStrokes,
       nextId: () => ++state.counter,
       save() {
-        storage.setItem(blobKey, JSON.stringify(toJSON()));
+        dirty = true;
+        flush();
       },
       toJSON
     };
@@ -1092,12 +1199,37 @@
     const storage = opts.storage ?? localStorage;
     const identify = opts.identify;
     const targets = createTargets();
-    const store = createStore({ key, storage });
-    if (store.migrated) store.save();
     let mode = null;
     let active = null;
     let destroyed = false;
     let normalized = false;
+    let saveFailed = false;
+    let loaded = false;
+    const store = createStore({
+      key,
+      storage,
+      onLoad: ({ migrated }) => {
+        if (destroyed) return;
+        loaded = true;
+        applyMode();
+        if (migrated) store.save();
+        tries = 0;
+        settle();
+        emit("change", { action: "load" });
+      },
+      // Storage is full, or gone. The notes are still in memory and still export,
+      // so nothing is lost YET — but only if whoever is reviewing finds out, which
+      // is why this is sticky rather than a passing message.
+      onSaveError: (err) => {
+        if (destroyed) return;
+        if (!saveFailed) {
+          saveFailed = true;
+          armUnloadGuard();
+          console.warn("[redpen] feedback is no longer being saved \u2014 COPY JSON to keep it", err);
+        }
+        emit("save:error", { error: err });
+      }
+    });
     const pen = new EventTarget();
     function emit(name, detail) {
       pen.dispatchEvent(new CustomEvent(name, { detail }));
@@ -1136,7 +1268,7 @@
       }
     });
     function normalizeOnce() {
-      if (normalized) return;
+      if (normalized || !store.loaded()) return;
       const r = targets.rectOf(targets.get(PAGE));
       if (store.normalizePixelStrokes(r)) store.save();
       normalized = true;
@@ -1155,6 +1287,15 @@
     }
     window.addEventListener("resize", onResize);
     window.addEventListener("scroll", onScroll, { passive: true });
+    let unloadGuard = null;
+    function armUnloadGuard() {
+      if (unloadGuard) return;
+      unloadGuard = (e) => {
+        e.preventDefault();
+        e.returnValue = "";
+      };
+      window.addEventListener("beforeunload", unloadGuard);
+    }
     function eachGroup(targetId) {
       if (targetId != null) {
         const g = store.state.targets.get(targetId);
@@ -1250,8 +1391,7 @@
         const next = v || null;
         if (next === mode) return;
         mode = next;
-        noteSurface.setActive(mode === "note");
-        drawSurface.setActive(mode === "draw");
+        applyMode();
         emit("mode", { mode });
       },
       mode: () => mode,
@@ -1317,24 +1457,32 @@
       },
       data,
       layout: repaint,
+      // true once a write has failed: the notes are memory-only from here
+      saveFailed: () => saveFailed,
       destroy() {
         if (destroyed) return;
         destroyed = true;
         window.removeEventListener("resize", onResize);
         window.removeEventListener("scroll", onScroll);
+        if (unloadGuard) window.removeEventListener("beforeunload", unloadGuard);
         noteSurface.destroy();
         drawSurface.destroy();
         ink.destroy();
         emit("change", { action: "destroy" });
       }
     });
+    function applyMode() {
+      noteSurface.setActive(loaded && mode === "note");
+      drawSurface.setActive(loaded && mode === "draw");
+    }
     let tries = 0;
-    (function settle() {
+    function settle() {
       if (destroyed) return;
       repaint();
       const pending = [...store.state.targets].some(([, g]) => g.notes.some((n) => n.target && !resolve(n.target)));
       if (tries++ < 20 && pending) setTimeout(settle, 500);
-    })();
+    }
+    settle();
     return pen;
   }
 

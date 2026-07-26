@@ -15,14 +15,15 @@
 // box to normalize against — nothing is silently discarded.
 
 import { PAGE } from './targets.js';
+import { createBackend } from './backend.js';
 
 const r1 = n => Math.round(n * 10) / 10;
 const r4 = n => Math.round(n * 10000) / 10000;
 
-export function createStore({ key, storage }) {
-  const blobKey = 'redpen:' + key;
+export function createStore({ key, storage, onLoad, onSaveError }) {
   const legacyNotesKey = 'la-notes:' + key;
   const legacyDrawKey = 'la-draw:' + key;
+  const backend = createBackend({ key, storage });
 
   const state = { counter: 0, targets: new Map() };
 
@@ -32,9 +33,7 @@ export function createStore({ key, storage }) {
     return g;
   }
 
-  function readBlob() {
-    let blob = null;
-    try { blob = JSON.parse(storage.getItem(blobKey) || 'null'); } catch {}
+  function adoptBlob(blob) {
     if (!blob || blob.v !== 3) return false;
     state.counter = blob.counter || 0;
     for (const [id, g] of Object.entries(blob.targets || {})) {
@@ -110,9 +109,54 @@ export function createStore({ key, storage }) {
     return changed;
   }
 
-  const hadV3 = readBlob();
-  const migrated = hadV3 ? false : migrateLegacy();
   group(PAGE);
+
+  // ---------- hydration ----------
+  // IndexedDB is async, so the store starts EMPTY and fills a few milliseconds
+  // later. Nothing may be written before that lands: a write from the empty
+  // window commits an empty blob over the stored one, which is how a single
+  // note made too early destroyed ten stored ones. The engine keeps its pointer
+  // surfaces switched off until `loaded` for the same reason, so there is no
+  // window in which a gesture can be made against the wrong state.
+
+  let loaded = false;
+  let readFailed = false;
+
+  (async function hydrate() {
+    let blob = null;
+    try {
+      blob = await backend.read();
+    } catch (err) {
+      // A read that FAILED is not a store that is empty. We do not know what is
+      // in there, so we neither adopt nor overwrite: the store goes read-only
+      // and says so, loudly, through the same channel a failed write uses.
+      readFailed = true;
+      onSaveError?.(err);
+    }
+    const migrated = !readFailed && !adoptBlob(blob) && migrateLegacy();
+    loaded = true;
+    onLoad?.({ migrated, readFailed });
+    flush();
+  })();
+
+  // ---------- writing ----------
+  // One write in flight with the state serialized at flush time, not at save
+  // time: a blob snapshotted before hydration would otherwise be committed
+  // after it, erasing everything the read had just restored.
+
+  let dirty = false, writing = false;
+
+  function flush() {
+    // never before hydration (an empty blob would erase the stored one), and
+    // never after a failed read (we would be overwriting we-don't-know-what)
+    if (writing || !dirty || !loaded || readFailed) return;
+    dirty = false;
+    writing = true;
+    backend.write(toJSON()).then(
+      () => { writing = false; flush(); },
+      err => { writing = false; onSaveError?.(err); flush(); },
+    );
+  }
 
   function toJSON() {
     const targets = {};
@@ -135,11 +179,12 @@ export function createStore({ key, storage }) {
   return {
     state,
     group,
-    migrated,
+    loaded: () => loaded,
     normalizePixelStrokes,
     nextId: () => ++state.counter,
     save() {
-      storage.setItem(blobKey, JSON.stringify(toJSON()));
+      dirty = true;
+      flush();
     },
     toJSON,
   };

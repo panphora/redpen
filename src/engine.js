@@ -27,13 +27,42 @@ export function create(opts = {}) {
   const identify = opts.identify;
 
   const targets = createTargets();
-  const store = createStore({ key, storage });
-  if (store.migrated) store.save();
 
   let mode = null;
   let active = null;      // null shows every target's marks
   let destroyed = false;
   let normalized = false;
+  let saveFailed = false;
+  let loaded = false;
+
+  const store = createStore({
+    key, storage,
+    onLoad: ({ migrated }) => {
+      if (destroyed) return;
+      loaded = true;
+      // the surfaces were held off until now, and the settle loop ran against an
+      // empty store, so both are (re)started here against the real data
+      applyMode();
+      if (migrated) store.save();
+      tries = 0;
+      settle();
+      emit('change', { action: 'load' });
+    },
+    // Storage is full, or gone. The notes are still in memory and still export,
+    // so nothing is lost YET — but only if whoever is reviewing finds out, which
+    // is why this is sticky rather than a passing message.
+    onSaveError: err => {
+      // a write in flight when destroy() ran would otherwise arm an unload guard
+      // that nothing is left to remove, prompting for the rest of the page's life
+      if (destroyed) return;
+      if (!saveFailed) {
+        saveFailed = true;
+        armUnloadGuard();
+        console.warn('[redpen] feedback is no longer being saved — COPY JSON to keep it', err);
+      }
+      emit('save:error', { error: err });
+    },
+  });
 
   const pen = new EventTarget();
 
@@ -75,7 +104,9 @@ export function create(opts = {}) {
   // legacy draw pixels carry no basis of their own; the first layout with a real
   // box turns them into fractions like everything else
   function normalizeOnce() {
-    if (normalized) return;
+    // one-shot, so it must not fire against the pre-hydration store: legacy
+    // px strokes arrive with the blob and would never be converted to fractions
+    if (normalized || !store.loaded()) return;
     const r = targets.rectOf(targets.get(PAGE));
     if (store.normalizePixelStrokes(r)) store.save();
     normalized = true;
@@ -96,6 +127,15 @@ export function create(opts = {}) {
   }
   window.addEventListener('resize', onResize);
   window.addEventListener('scroll', onScroll, { passive: true });
+
+  // Armed only once saving has actually broken. Before that there is nothing to
+  // lose, and a reload prompt on every page that ever loaded redpen is noise.
+  let unloadGuard = null;
+  function armUnloadGuard() {
+    if (unloadGuard) return;
+    unloadGuard = e => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', unloadGuard);
+  }
 
   function eachGroup(targetId) {
     if (targetId != null) {
@@ -200,8 +240,7 @@ export function create(opts = {}) {
       const next = v || null;
       if (next === mode) return;
       mode = next;
-      noteSurface.setActive(mode === 'note');
-      drawSurface.setActive(mode === 'draw');
+      applyMode();
       emit('mode', { mode });
     },
     mode: () => mode,
@@ -266,11 +305,14 @@ export function create(opts = {}) {
     },
     data,
     layout: repaint,
+    // true once a write has failed: the notes are memory-only from here
+    saveFailed: () => saveFailed,
     destroy() {
       if (destroyed) return;
       destroyed = true;
       window.removeEventListener('resize', onResize);
       window.removeEventListener('scroll', onScroll);
+      if (unloadGuard) window.removeEventListener('beforeunload', unloadGuard);
       noteSurface.destroy();
       drawSurface.destroy();
       ink.destroy();
@@ -278,15 +320,27 @@ export function create(opts = {}) {
     },
   });
 
+  // A gesture is impossible until the stored feedback has landed. A note made
+  // against the empty pre-hydration store either persists an empty blob over the
+  // real one or has to be renumbered on top of it, and a few milliseconds of an
+  // inert overlay beats both. The user has to click NOTES first anyway, which
+  // takes far longer than the read.
+  function applyMode() {
+    noteSurface.setActive(loaded && mode === 'note');
+    drawSurface.setActive(loaded && mode === 'draw');
+  }
+
   // scene canvases and swapped-in panels are built after this module runs:
-  // retry until every note's element resolves
+  // retry until every note's element resolves. Runs again on load, because the
+  // first pass sees an empty store and so never schedules a retry.
   let tries = 0;
-  (function settle() {
+  function settle() {
     if (destroyed) return;
     repaint();
     const pending = [...store.state.targets].some(([, g]) => g.notes.some(n => n.target && !resolve(n.target)));
     if (tries++ < 20 && pending) setTimeout(settle, 500);
-  })();
+  }
+  settle();
 
   return pen;
 }

@@ -39,6 +39,10 @@ const PANEL_CSS = `
     border: 1px solid #2c2c2c; border-radius: 4px; padding: 4px 6px; font: inherit; }
   .laNoteRow button { background: none; border: 0; color: #e5484d; cursor: pointer; font-size: 16px; line-height: 1; padding: 0; }
   .laNoteRow.stale { opacity: .45; }
+  #laNotes.failed { outline: 2px solid #e5484d; }
+  #laNotes .laSaveWarn { display: none; margin: 10px 0 0; padding-top: 8px;
+    border-top: 1px solid #4a2326; color: #ff9ea1; }
+  #laNotes.failed .laSaveWarn { display: block; }
 `;
 
 // ---------- hub ----------
@@ -161,7 +165,8 @@ export function attachNotesPanel(pen) {
   panel.setAttribute('sap-ignore', '');
   panel.innerHTML = `<h2>Notes</h2>
   <p class="hint">Toggle NOTES, then click an element or drag a box across an area. COPY JSON sends it all back.</p>
-  <div id="laNoteList"></div>`;
+  <div id="laNoteList"></div>
+  <p class="laSaveWarn">Not saving. Storage is full or unavailable, so these notes only exist in this tab. COPY JSON before you close it.</p>`;
   document.body.appendChild(panel);
   const list = panel.querySelector('#laNoteList');
 
@@ -195,12 +200,18 @@ export function attachNotesPanel(pen) {
   pen.addEventListener('change', e => {
     const { action, item } = e.detail;
     if (action === 'note') return;
-    if (action === 'add' || action === 'remove' || action === 'clear') {
+    // `load` is the stored feedback arriving: the store hydrates asynchronously,
+    // so the first render is of an empty list and this is the one that fills it
+    if (action === 'add' || action === 'remove' || action === 'clear' || action === 'load') {
       renderRows();
       if (action === 'add') rowEls.get(item.id)?.row.querySelector('input').focus();
     }
   });
   pen.addEventListener('layout', markStale);
+  // sticky on purpose: it stays for the rest of the session
+  pen.addEventListener('save:error', () => panel.classList.add('failed'));
+  // sticky means sticky: a panel attached after the failure starts red too
+  if (pen.saveFailed?.()) panel.classList.add('failed');
 
   renderRows();
   return { panel, renderRows };

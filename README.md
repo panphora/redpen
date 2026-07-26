@@ -32,6 +32,34 @@ ink overlays into `mount`. Those are the feedback medium. All injected UI is mar
 `data-la-ui` (so the tools ignore their own chrome) and `sap-ignore` (so Sap-powered
 pages leave it alone).
 
+## Where feedback lives
+
+Feedback is stored in **IndexedDB**, one blob per instance key, under the `redpen` database.
+localStorage is the fallback for browsers where IndexedDB is unavailable (private windows, some
+`file://` contexts), and the `storage` option injects it.
+
+localStorage used to be the only home, and it is a few megabytes per **origin** shared with
+everything else the page stores. redpen rewrites its whole blob on every note, so a full one made
+`setItem` throw and every later write failed too, silently. IndexedDB has a much larger budget and
+reports failure per write.
+
+Two consequences worth knowing:
+
+- **The store hydrates asynchronously.** `create()` returns immediately with an empty store and
+  fills a few milliseconds later, then emits `change` with `action: 'load'`. Render off the events
+  rather than reading `items()` once at construction. Nothing is written before that lands, and the
+  note and draw surfaces stay inactive until it does, so a gesture can never be made against the
+  empty store. Host calls that mutate (`clear()`, `setNote()`) should wait for `load` too.
+- **A failed read makes the store read-only.** If IndexedDB cannot be read, redpen does not assume
+  it is empty and does not write: it emits `save:error` and keeps everything in memory, because
+  overwriting a store you could not read is how one transient error becomes permanent loss.
+- **A failed write is announced, not swallowed.** The engine emits `save:error`, `pen.saveFailed()`
+  stays true, the default panel turns red for the rest of the session, and a `beforeunload` guard
+  arms. Notes stay in memory and still export, so COPY JSON always recovers them.
+
+An existing `redpen:<key>` localStorage blob is adopted into IndexedDB on first read and **left in
+place**, so rolling back to an older build loses nothing.
+
 ## Note context (the page enriches its own notes)
 
 A note is only reproducible if it carries the state it was made in. redpen does not
@@ -86,7 +114,7 @@ Headless, on a host that owns its own UI:
 const pen = Redpen.create({
   key: 'la:' + location.pathname,  // storage namespace (default: location.pathname)
   mount: document.getElementById('stage'),
-  storage: localStorage,           // injectable; file://-safe
+  storage: localStorage,           // fallback only; IndexedDB is primary
   identify: el => describe(el),    // optional
 });
 
