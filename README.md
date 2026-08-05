@@ -3,13 +3,16 @@
 Page review tools for leaving structured feedback on any HTML page, built to hand
 that feedback to an agent as JSON.
 
-redpen is a **headless engine** plus a **default UI adapter**, shipped as two bundles:
+redpen is a **headless engine** plus **UI adapters**, shipped as three bundles:
 
 - `dist/redpen.js` — engine + default UI. The standalone experience: the bottom-right
   hub bar, the `#laNotes` panel, global cmd+Z, and the `NotesTool` / `DrawTool` /
   `FeedbackHub` console handles.
 - `dist/redpen-core.js` — the engine alone, as `window.Redpen.create(...)`. Zero
   chrome, no global keyboard, no clipboard. The host owns all of that.
+- `dist/redpen-review.js` — engine + the review adapter, as
+  `window.RedpenReview.mount(...)`. For the other direction: the page asks
+  questions about itself and someone answers them. See [Requests](#requests).
 
 ## What the engine does
 
@@ -151,6 +154,66 @@ On a `file://` page (modules are blocked there), use the bundle:
 
 Console handles: `NotesTool`, `DrawTool`, `FeedbackHub` (e.g. `FeedbackHub.json()`).
 
+## Requests
+
+A note is feedback going one way. A **request** is the page asking a question about
+one of its own elements and getting an answer back. The agent writes the questions
+into the HTML, one attribute on the element being asked about, and the element's id
+is the answer's key:
+
+```html
+<span class="flag" id="ask-also" data-review-ask="Keep 'also' struck?">…</span>
+```
+
+```html
+<script src="dist/redpen-review.js"></script>
+<script>const review = RedpenReview.mount({ clickThrough: 'canvas.beat-video' });</script>
+```
+
+`mount` options: `key` (storage key, default `review:<pathname>`), `attr` (the question
+attribute, default `data-review-ask`), and `clickThrough` — a selector for artwork the
+page covers with `pointer-events: none`. Without it, a drag across such a picture files
+an *area* note about the surrounding divs instead of a *region* note in fractions of the
+picture, and the two look identical until the paste. It is applied as a stylesheet rule
+so artwork mounted later (lazily, on scroll) is covered too.
+
+A numbered chip appears at the end of each asked element, in its own
+`pointer-events: auto` layer (`.laMarkers` is not clickable, by design, so note
+markers never are). Clicking it opens a popover with the question and a field. The
+bar counts what is left, steps between unanswered questions, toggles the volunteer
+mode (plain redpen note capture), and copies everything as one JSON blob.
+
+**Requests are never persisted.** The page re-declares them on every load, so the
+HTML is the truth about which questions exist: no migration, no reconciliation rule,
+and no question that resurrects from storage after the author deleted it. Only the
+answer is stored, and it stores the question it was answering:
+
+```json
+"answers": { "ask-also": { "said": "keep it struck", "q": "Keep 'also' struck?", "at": "2026-08-04T…" } }
+```
+
+That one extra field is what makes an edited page survivable. An answer whose
+question was **reworded** is `stale`: the popover shows both versions and the export
+carries `askedWas`. An answer whose question was **deleted** is `orphaned`: it is
+counted in the bar, listed with the question it was replying to, and still exported.
+Nothing here ever deletes an answer on its own — `answer(key, '')`, from a discard
+click, is the only path that removes one.
+
+Engine surface:
+
+```js
+pen.setRequests([{ key, ask, el?, selector? }])   // replaces the declaration; writes nothing
+pen.requests()      // [{ key, n, ask, target, answer, answered, askedWas, stale }]
+pen.orphans()       // stored answers the page no longer asks for
+pen.answer(key, text)
+pen.openRequest(key)   // visual only: rings that chip
+pen.review()        // the flat export, answers and comments in one list
+```
+
+`request:click` fires when a chip is clicked. `review()` is separate from `data()`
+on purpose: `data()` has live consumers and projects notes through a fixed field
+whitelist, so anything new added there would be silently dropped.
+
 ## Source layout
 
 ```
@@ -162,9 +225,11 @@ draw-surface.js  ink canvas + lazy brush + smoothing + RDP + SVG path export
 ink-layer.js     finished strokes as SVG marks in one overlay <svg> per viewbox target
 engine.js        Redpen.create → RedpenEngine extends EventTarget
 ui.js            default adapter: hub bar + #laNotes list + global cmd+Z
+review.js        review adapter: request chips + popover + answer/comment copy
 standalone.js    composes engine + ui into one page-wide instance
-index.js         engine + ui   → dist/redpen.js
-index-core.js    engine alone  → dist/redpen-core.js
+index.js         engine + ui     → dist/redpen.js
+index-core.js    engine alone    → dist/redpen-core.js
+index-review.js  engine + review → dist/redpen-review.js
 notes.js / draw.js / feedback-hub.js
                  import-and-go entry points kept for the scene pages that symlink them
 ```
@@ -175,6 +240,7 @@ One blob per instance key, `redpen:<key>`:
 
 ```json
 { "v": 3, "counter": 42,
+  "answers": { "ask-also": { "said": "keep it struck", "q": "Keep 'also' struck?", "at": "2026-08-04T…" } },
   "targets": {
     "p19": { "basis": { "type": "viewbox", "viewBox": [0, 0, 1000, 820] },
              "notes":   [ { "id": 16, "text": "…", "kind": "region", "box": { "x": 388, "y": 600, "w": 250, "h": 60 } } ],
@@ -188,8 +254,8 @@ first layout with a real box to normalize against, so nothing is silently discar
 
 ## Build
 
-`dist/redpen.js` and `dist/redpen-core.js` are checked-in IIFE bundles. After
-editing `src/`:
+`dist/redpen.js`, `dist/redpen-core.js` and `dist/redpen-review.js` are checked-in
+IIFE bundles. After editing `src/`:
 
 ```bash
 npm run build

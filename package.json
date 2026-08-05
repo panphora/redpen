@@ -6,9 +6,10 @@
   "description": "Page review tools: element/area/region notes, freehand ink, and a COPY JSON hub for handing feedback to agents",
   "main": "src/index.js",
   "scripts": {
-    "build": "npm run build:standalone && npm run build:core",
+    "build": "npm run build:standalone && npm run build:core && npm run build:review",
     "build:standalone": "esbuild src/index.js --bundle --format=iife --outfile=dist/redpen.js",
-    "build:core": "esbuild src/index-core.js --bundle --format=iife --outfile=dist/redpen-core.js"
+    "build:core": "esbuild src/index-core.js --bundle --format=iife --outfile=dist/redpen-core.js",
+    "build:review": "esbuild src/index-review.js --bundle --format=iife --outfile=dist/redpen-review.js"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

@@ -220,7 +220,8 @@
     const legacyNotesKey = "la-notes:" + key;
     const legacyDrawKey = "la-draw:" + key;
     const backend = createBackend({ key, storage });
-    const state = { counter: 0, targets: /* @__PURE__ */ new Map() };
+    const state = { counter: 0, targets: /* @__PURE__ */ new Map(), answers: /* @__PURE__ */ Object.create(null) };
+    const clearedBeforeLoad = /* @__PURE__ */ new Set();
     function group(id) {
       let g = state.targets.get(id);
       if (!g) {
@@ -232,6 +233,14 @@
     function adoptBlob(blob) {
       if (!blob || blob.v !== 3) return false;
       state.counter = blob.counter || 0;
+      if (blob.answers) {
+        state.answers = Object.assign(/* @__PURE__ */ Object.create(null), blob.answers, state.answers);
+        for (const [key2, mem] of Object.entries(state.answers)) {
+          if (!mem.q && blob.answers[key2]) mem.q = blob.answers[key2].q;
+        }
+        for (const key2 of clearedBeforeLoad) delete state.answers[key2];
+      }
+      clearedBeforeLoad.clear();
       for (const [id, g] of Object.entries(blob.targets || {})) {
         const t = group(id);
         t.notes = g.notes || [];
@@ -348,12 +357,23 @@
           }))
         };
       }
-      return { v: 3, counter: state.counter, targets };
+      const answers = Object.keys(state.answers).length ? { answers: state.answers } : {};
+      return { v: 3, counter: state.counter, ...answers, targets };
     }
     return {
       state,
       group,
       loaded: () => loaded,
+      answer: (key2) => state.answers[key2] || null,
+      setAnswer(key2, record) {
+        state.answers[key2] = record;
+        clearedBeforeLoad.delete(key2);
+      },
+      forgetAnswer(key2) {
+        delete state.answers[key2];
+        if (!loaded) clearedBeforeLoad.add(key2);
+      },
+      answerKeys: () => Object.keys(state.answers),
       normalizePixelStrokes,
       nextId: () => ++state.counter,
       save() {
@@ -449,7 +469,19 @@
     font: 700 11px/16px -apple-system, sans-serif; text-align: center; min-width: 16px; height: 16px; border-radius: 8px; padding: 0 3px; }
   .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
   .laOverlay { position: fixed; inset: 0; z-index: 99992; display: none; touch-action: none; }
+  .laReqs { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99991; pointer-events: none; }
+  .laReq { position: absolute; margin: -9px 0 0 3px; min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box;
+    border: 0; border-radius: 9px; background: #e5484d; color: #fff; cursor: pointer;
+    font: 700 11px/17px -apple-system, sans-serif; text-align: center; pointer-events: auto; }
+  .laReq:hover { background: #17110C; }
+  .laReq.done { background: #B7B3AE; }
+  .laReq.stale { box-shadow: 0 0 0 2px #E8A33D; }
+  .laReq.on { box-shadow: 0 0 0 3px rgba(229, 72, 77, .35); }
 `;
+  function tailRect(el) {
+    const rects = el.getClientRects();
+    return rects.length ? rects[rects.length - 1] : el.getBoundingClientRect();
+  }
   function injectSurfaceStyles() {
     if (document.getElementById("laSurfaceStyle")) return;
     const style = document.createElement("style");
@@ -464,11 +496,13 @@
     el.setAttribute("sap-ignore", "");
     return el;
   }
-  function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible }) {
+  function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick }) {
     const describe2 = identify || describe;
     injectSurfaceStyles();
     const markers = chrome(document.createElement("div"), "laMarkers", "laMarkers");
     mount.appendChild(markers);
+    const reqs = chrome(document.createElement("div"), "laReqs", "laReqs");
+    mount.appendChild(reqs);
     const overlay = chrome(document.createElement("div"), "laOverlay", "laOverlay");
     if (mount !== document.body) overlay.style.position = "absolute";
     mount.appendChild(overlay);
@@ -545,7 +579,38 @@
           markers.appendChild(box);
         }
       }
+      layoutRequests();
       afterLayout?.();
+    }
+    let openKey = null;
+    function layoutRequests() {
+      reqs.textContent = "";
+      const base = reqs.getBoundingClientRect();
+      for (const r of requests ? requests() : []) {
+        const el = r.node && r.node.isConnected ? r.node : resolve(r.target);
+        if (!el) continue;
+        const b = tailRect(el);
+        if (!b.width && !b.height) continue;
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "laReq" + (r.answered ? " done" : "") + (r.stale ? " stale" : "") + (r.key === openKey ? " on" : "");
+        chip.dataset.laReq = r.key;
+        chip.title = r.ask || "";
+        chip.textContent = r.answered ? "\u2713" : String(r.n);
+        chip.style.left = b.right - base.left + "px";
+        chip.style.top = b.top - base.top + "px";
+        chip.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onRequestClick?.(r.key);
+        });
+        reqs.appendChild(chip);
+      }
+    }
+    function setOpenRequest(key) {
+      if (openKey === key) return;
+      openKey = key;
+      layoutRequests();
     }
     let hover = null;
     function setHover(r) {
@@ -776,9 +841,10 @@
     function destroy() {
       setHover(null);
       markers.remove();
+      reqs.remove();
       overlay.remove();
     }
-    return { markers, overlay, layout, setActive: setActive2, destroy };
+    return { markers, overlay, layout, setActive: setActive2, setOpenRequest, destroy };
   }
 
   // src/draw-surface.js
@@ -1221,7 +1287,10 @@
       // so nothing is lost YET — but only if whoever is reviewing finds out, which
       // is why this is sticky rather than a passing message.
       onSaveError: (err) => {
-        if (destroyed) return;
+        if (destroyed) {
+          console.warn("[redpen] a write failed after destroy \u2014 the last edit may not have been saved", err);
+          return;
+        }
         if (!saveFailed) {
           saveFailed = true;
           armUnloadGuard();
@@ -1235,6 +1304,29 @@
       pen2.dispatchEvent(new CustomEvent(name, { detail }));
     }
     const visible = (id) => active === null || active === id;
+    let requests = [];
+    const answerOf = (key2) => store.answer(key2);
+    const describeEl = identify || describe;
+    function requestView(r, i) {
+      const a = answerOf(r.key);
+      return {
+        key: r.key,
+        n: i + 1,
+        ask: r.ask,
+        target: r.target,
+        answer: a ? a.said : "",
+        answered: !!a,
+        askedWas: a ? a.q : null,
+        stale: !!a && a.q !== r.ask
+      };
+    }
+    function orphans() {
+      const declared = new Set(requests.map((r) => r.key));
+      return store.answerKeys().filter((key2) => !declared.has(key2)).map((key2) => {
+        const a = store.answer(key2);
+        return { key: key2, answer: a.said, askedWas: a.q, at: a.at || null };
+      });
+    }
     const ink = createInkLayer({ mount, targets });
     const noteSurface = createNoteSurface({
       mount,
@@ -1242,6 +1334,11 @@
       store,
       identify,
       visible,
+      requests: () => requests.map((r, i) => ({ ...requestView(r, i), node: r.node })),
+      onRequestClick: (key2) => {
+        const i = requests.findIndex((r) => r.key === key2);
+        if (i >= 0) emit("request:click", { request: requestView(requests[i], i) });
+      },
       addNote: (targetId, fields, gesture) => {
         const g = store.group(targetId);
         const t = targets.get(targetId);
@@ -1352,6 +1449,56 @@
       }
       return { targets: out };
     }
+    function review() {
+      const items = [];
+      requests.forEach((r, i) => {
+        const v = requestView(r, i);
+        items.push({
+          kind: "answer",
+          ask: v.key,
+          question: v.ask,
+          said: v.answer || null,
+          ...v.answered ? {} : { skipped: true },
+          ...v.stale ? { stale: true, askedWas: v.askedWas } : {},
+          anchor: v.target
+        });
+      });
+      for (const o of orphans()) {
+        items.push({ kind: "answer", ask: o.key, said: o.answer, orphaned: true, askedWas: o.askedWas, anchor: null });
+      }
+      const d = data();
+      let coords = null;
+      const bases = {};
+      for (const [id, g] of Object.entries(d.targets)) {
+        if (id === PAGE) {
+          coords = g.coords;
+        } else if (g.notes.length) {
+          bases[id] = { basis: g.basis, coords: g.coords, ...g.viewBox ? { viewBox: g.viewBox } : {} };
+        }
+        for (const n of g.notes) {
+          const { id: noteId, text, kind, target, ...geometry } = n;
+          items.push({
+            kind: "comment",
+            id: noteId,
+            shape: kind,
+            said: text,
+            ...id === PAGE ? {} : { target_id: id },
+            anchor: target || null,
+            ...geometry
+          });
+        }
+      }
+      const asked = requests.map((r, i) => requestView(r, i));
+      return {
+        page: location.pathname.split("/").pop() || location.pathname,
+        answered: asked.filter((v) => v.answered).length,
+        unanswered: asked.filter((v) => !v.answered).length,
+        orphaned: orphans().length,
+        ...coords ? { coords } : {},
+        ...Object.keys(bases).length ? { targets: bases } : {},
+        items
+      };
+    }
     Object.assign(pen2, {
       // ---------- targets ----------
       addTarget(spec) {
@@ -1455,7 +1602,55 @@
         repaint();
         emit("change", { action: "clear" });
       },
+      // ---------- requests ----------
+      // Declarative and idempotent: the list REPLACES the previous declaration.
+      // Safe before hydration, because it writes nothing — an answer that arrives
+      // milliseconds later simply lights up a chip that is already on screen.
+      setRequests(list) {
+        requests = (list || []).filter((spec) => spec && spec.key).map((spec) => {
+          const node = spec.el || (spec.selector ? document.querySelector(spec.selector) : null);
+          return {
+            key: spec.key,
+            ask: spec.ask || "",
+            // the live node, so a declared request never depends on a css path;
+            // `target` is for the export and for re-finding it after a re-render
+            node: node || null,
+            target: node ? describeEl(node) : spec.selector ? { selector: spec.selector } : null
+          };
+        });
+        tries = 0;
+        settle();
+        emit("change", { action: "requests" });
+        return requests.map(requestView);
+      },
+      requests: () => requests.map(requestView),
+      orphans,
+      // purely visual: rings the chip whose question is on screen right now
+      openRequest: (key2) => noteSurface.setOpenRequest(key2 ?? null),
+      // '' clears the answer. That is the only path that deletes one, and it is
+      // always a thing the reviewer clicked.
+      answer(key2, text) {
+        const i = requests.findIndex((r2) => r2.key === key2);
+        const r = i >= 0 ? requests[i] : null;
+        const said = text ?? "";
+        if (!said.trim()) {
+          store.forgetAnswer(key2);
+        } else {
+          const prev = store.answer(key2);
+          store.setAnswer(key2, {
+            said,
+            // an orphan being edited keeps the question it was originally asked
+            q: r ? r.ask : prev ? prev.q : "",
+            at: (/* @__PURE__ */ new Date()).toISOString()
+          });
+        }
+        store.save();
+        noteSurface.layout();
+        const view = r ? requestView(r, i) : { key: key2, ask: null, answer: said.trim() ? said : "", answered: !!said.trim(), orphaned: true };
+        emit("change", { action: "answer", request: view });
+      },
       data,
+      review,
       layout: repaint,
       // true once a write has failed: the notes are memory-only from here
       saveFailed: () => saveFailed,
@@ -1479,7 +1674,13 @@
     function settle() {
       if (destroyed) return;
       repaint();
-      const pending = [...store.state.targets].some(([, g]) => g.notes.some((n) => n.target && !resolve(n.target)));
+      const boxless = (r) => {
+        const el = r.node && r.node.isConnected ? r.node : resolve(r.target);
+        if (!el) return true;
+        const b = el.getBoundingClientRect();
+        return !b.width && !b.height;
+      };
+      const pending = [...store.state.targets].some(([, g]) => g.notes.some((n) => n.target && !resolve(n.target))) || requests.some(boxless);
       if (tries++ < 20 && pending) setTimeout(settle, 500);
     }
     settle();

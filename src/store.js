@@ -3,10 +3,17 @@
 // agent can be told "fix stroke 4 on p12".
 //
 //   { v: 3, counter: 42,
+//     answers: { 'ask-also': {said:'keep it struck', q:'…', at:'2026-08-04T…'} },
 //     targets: {
 //       p19: { basis: {type:'viewbox', viewBox:[0,0,1000,820]},
 //              notes:   [ {id:16, text:'…', kind:'region', box:{x:388,y:600,w:250,h:60}} ],
 //              strokes: [ {id:17, points:[[392,612], …], width:3} ] } } }
+//
+// `answers` is the reply side of a review request. Requests themselves are never
+// stored: the page declares them on every load, so the HTML is the truth about
+// which questions exist and there is nothing to reconcile. An answer carries the
+// question it was replying to, which is what lets a reworded or deleted question
+// leave a readable answer behind instead of an orphaned string.
 //
 // Geometry is stored in the target's own basis: viewbox user units for panels,
 // fractions 0-1 for the page. Legacy `la-notes:<path>` / `la-draw:<path>` fold
@@ -25,7 +32,15 @@ export function createStore({ key, storage, onLoad, onSaveError }) {
   const legacyDrawKey = 'la-draw:' + key;
   const backend = createBackend({ key, storage });
 
-  const state = { counter: 0, targets: new Map() };
+  // null-prototype: an answer is keyed by an element id the page chose, and on a
+  // plain object an id of `constructor` or `toString` reads back as an inherited
+  // value, so a question nobody touched would render as already answered
+  const state = { counter: 0, targets: new Map(), answers: Object.create(null) };
+
+  // An answer cleared before the read landed has nothing in `answers` to stand
+  // for it, so the merge below would restore the very answer that was just
+  // deleted. The clear is remembered instead, and applied after the blob.
+  const clearedBeforeLoad = new Set();
 
   function group(id) {
     let g = state.targets.get(id);
@@ -36,6 +51,19 @@ export function createStore({ key, storage, onLoad, onSaveError }) {
   function adoptBlob(blob) {
     if (!blob || blob.v !== 3) return false;
     state.counter = blob.counter || 0;
+    // memory wins: an answer typed in the few ms before the read landed is newer
+    // than the stored one, and adopting the blob wholesale would erase it
+    if (blob.answers) {
+      state.answers = Object.assign(Object.create(null), blob.answers, state.answers);
+      // an answer edited before the read landed had no way to know what question
+      // it was replying to, so the stored one fills the gap rather than being
+      // overwritten with nothing
+      for (const [key, mem] of Object.entries(state.answers)) {
+        if (!mem.q && blob.answers[key]) mem.q = blob.answers[key].q;
+      }
+      for (const key of clearedBeforeLoad) delete state.answers[key];
+    }
+    clearedBeforeLoad.clear();
     for (const [id, g] of Object.entries(blob.targets || {})) {
       const t = group(id);
       t.notes = g.notes || [];
@@ -173,13 +201,24 @@ export function createStore({ key, storage, onLoad, onSaveError }) {
         })),
       };
     }
-    return { v: 3, counter: state.counter, targets };
+    const answers = Object.keys(state.answers).length ? { answers: state.answers } : {};
+    return { v: 3, counter: state.counter, ...answers, targets };
   }
 
   return {
     state,
     group,
     loaded: () => loaded,
+    answer: key => state.answers[key] || null,
+    setAnswer(key, record) {
+      state.answers[key] = record;
+      clearedBeforeLoad.delete(key);
+    },
+    forgetAnswer(key) {
+      delete state.answers[key];
+      if (!loaded) clearedBeforeLoad.add(key);
+    },
+    answerKeys: () => Object.keys(state.answers),
     normalizePixelStrokes,
     nextId: () => ++state.counter,
     save() {

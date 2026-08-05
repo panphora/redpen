@@ -35,7 +35,24 @@ const SURFACE_CSS = `
     font: 700 11px/16px -apple-system, sans-serif; text-align: center; min-width: 16px; height: 16px; border-radius: 8px; padding: 0 3px; }
   .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
   .laOverlay { position: fixed; inset: 0; z-index: 99992; display: none; touch-action: none; }
+  .laReqs { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99991; pointer-events: none; }
+  .laReq { position: absolute; margin: -9px 0 0 3px; min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box;
+    border: 0; border-radius: 9px; background: #e5484d; color: #fff; cursor: pointer;
+    font: 700 11px/17px -apple-system, sans-serif; text-align: center; pointer-events: auto; }
+  .laReq:hover { background: #17110C; }
+  .laReq.done { background: #B7B3AE; }
+  .laReq.stale { box-shadow: 0 0 0 2px #E8A33D; }
+  .laReq.on { box-shadow: 0 0 0 3px rgba(229, 72, 77, .35); }
 `;
+
+// A chip, and the popover that opens from it, sit just past the END of what they
+// are about, not at the corner of its bounding box: a flagged phrase that wraps
+// across two lines has a bounding box whose top-right corner is empty space in
+// the middle of a sentence.
+export function tailRect(el) {
+  const rects = el.getClientRects();
+  return rects.length ? rects[rects.length - 1] : el.getBoundingClientRect();
+}
 
 export function injectSurfaceStyles() {
   if (document.getElementById('laSurfaceStyle')) return;
@@ -53,12 +70,20 @@ function chrome(el, cls, id) {
   return el;
 }
 
-export function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible }) {
+export function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick }) {
   const describe = identify || defaultDescribe;
   injectSurfaceStyles();
 
   const markers = chrome(document.createElement('div'), 'laMarkers', 'laMarkers');
   mount.appendChild(markers);
+
+  // Request chips are the one piece of engine chrome that takes clicks, so they
+  // need their own layer: .laMarkers is pointer-events:none and every note marker
+  // in it is unclickable by design. This layer sits BELOW the capture overlay, so
+  // turning on note mode makes the chips inert — otherwise the first click of a
+  // volunteered comment would land on a chip and file a note about the chip.
+  const reqs = chrome(document.createElement('div'), 'laReqs', 'laReqs');
+  mount.appendChild(reqs);
 
   const overlay = chrome(document.createElement('div'), 'laOverlay', 'laOverlay');
   if (mount !== document.body) overlay.style.position = 'absolute';
@@ -146,7 +171,48 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
         markers.appendChild(box);
       }
     }
+    layoutRequests();
     afterLayout?.();
+  }
+
+  let openKey = null;
+
+  function layoutRequests() {
+    reqs.textContent = '';
+    // measured once: .laReqs is a zero-size absolutely positioned layer, so
+    // appending chips cannot move it, and reading it per chip forces a
+    // synchronous layout on every scroll event
+    const base = reqs.getBoundingClientRect();
+    for (const r of (requests ? requests() : [])) {
+      const el = (r.node && r.node.isConnected) ? r.node : resolve(r.target);
+      if (!el) continue;
+      const b = tailRect(el);
+      if (!b.width && !b.height) continue;
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'laReq'
+        + (r.answered ? ' done' : '')
+        + (r.stale ? ' stale' : '')
+        + (r.key === openKey ? ' on' : '');
+      chip.dataset.laReq = r.key;
+      chip.title = r.ask || '';
+      chip.textContent = r.answered ? '✓' : String(r.n);
+      chip.style.left = (b.right - base.left) + 'px';
+      chip.style.top = (b.top - base.top) + 'px';
+      chip.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        onRequestClick?.(r.key);
+      });
+      reqs.appendChild(chip);
+    }
+  }
+
+  // which chip reads as open, so the popover and the page agree about it
+  function setOpenRequest(key) {
+    if (openKey === key) return;
+    openKey = key;
+    layoutRequests();
   }
 
   // ---------- interaction ----------
@@ -397,8 +463,9 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
   function destroy() {
     setHover(null);
     markers.remove();
+    reqs.remove();
     overlay.remove();
   }
 
-  return { markers, overlay, layout, setActive, destroy };
+  return { markers, overlay, layout, setActive, setOpenRequest, destroy };
 }

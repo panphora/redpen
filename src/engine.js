@@ -53,8 +53,13 @@ export function create(opts = {}) {
     // is why this is sticky rather than a passing message.
     onSaveError: err => {
       // a write in flight when destroy() ran would otherwise arm an unload guard
-      // that nothing is left to remove, prompting for the rest of the page's life
-      if (destroyed) return;
+      // that nothing is left to remove, prompting for the rest of the page's life.
+      // It still gets said out loud: the listeners are gone, so the console is the
+      // only place a last write that failed on the way out can surface at all.
+      if (destroyed) {
+        console.warn('[redpen] a write failed after destroy — the last edit may not have been saved', err);
+        return;
+      }
       if (!saveFailed) {
         saveFailed = true;
         armUnloadGuard();
@@ -72,10 +77,61 @@ export function create(opts = {}) {
 
   const visible = id => active === null || active === id;
 
+  // ---------- requests ----------
+  // A request is a question the page asks about one of its own elements. The page
+  // declares the whole set on every load, and the engine never persists one: the
+  // HTML is the truth about which questions exist, so there is no migration, no
+  // reconciliation rule, and no question that resurrects from storage after the
+  // author deleted it.
+  //
+  // Only the ANSWER is stored, and it stores the question it was answering. That
+  // one extra field is what makes the two failure modes survivable: a question
+  // that was reworded leaves a `stale` answer that can show both versions, and a
+  // question that was deleted leaves an `orphaned` answer that still exports what
+  // it was replying to. Nothing here ever deletes an answer on its own.
+
+  let requests = [];
+
+  const answerOf = key => store.answer(key);
+  // a host that supplied its own identifier gets it everywhere, so one export
+  // never mixes two descriptor shapes
+  const describeEl = identify || describe;
+
+  function requestView(r, i) {
+    const a = answerOf(r.key);
+    return {
+      key: r.key,
+      n: i + 1,
+      ask: r.ask,
+      target: r.target,
+      answer: a ? a.said : '',
+      answered: !!a,
+      askedWas: a ? a.q : null,
+      stale: !!a && a.q !== r.ask,
+    };
+  }
+
+  // stored answers the page no longer asks for. Surfaced rather than swept: these
+  // are the user's own words, and the author's edit is not consent to delete them.
+  function orphans() {
+    const declared = new Set(requests.map(r => r.key));
+    return store.answerKeys()
+      .filter(key => !declared.has(key))
+      .map(key => {
+        const a = store.answer(key);
+        return { key, answer: a.said, askedWas: a.q, at: a.at || null };
+      });
+  }
+
   const ink = createInkLayer({ mount, targets });
 
   const noteSurface = createNoteSurface({
     mount, targets, store, identify, visible,
+    requests: () => requests.map((r, i) => ({ ...requestView(r, i), node: r.node })),
+    onRequestClick: key => {
+      const i = requests.findIndex(r => r.key === key);
+      if (i >= 0) emit('request:click', { request: requestView(requests[i], i) });
+    },
     addNote: (targetId, fields, gesture) => {
       const g = store.group(targetId);
       const t = targets.get(targetId);
@@ -203,6 +259,64 @@ export function create(opts = {}) {
     return { targets: out };
   }
 
+  // The review projection: one flat list, because an answer and a volunteered
+  // comment are the same thing to whoever reads them — a place on the page plus
+  // something the reviewer said about it. Separate from data() on purpose: that
+  // shape has live consumers, and its note fields are a fixed whitelist, so a
+  // field added here would be silently dropped there.
+  function review() {
+    const items = [];
+    requests.forEach((r, i) => {
+      const v = requestView(r, i);
+      items.push({
+        kind: 'answer',
+        ask: v.key,
+        question: v.ask,
+        said: v.answer || null,
+        ...(v.answered ? {} : { skipped: true }),
+        ...(v.stale ? { stale: true, askedWas: v.askedWas } : {}),
+        anchor: v.target,
+      });
+    });
+    for (const o of orphans()) {
+      items.push({ kind: 'answer', ask: o.key, said: o.answer, orphaned: true, askedWas: o.askedWas, anchor: null });
+    }
+    const d = data();
+    let coords = null;
+    // Flattening is only safe for the page group, which has one coordinate rule.
+    // A registered target stores its boxes in its own basis, so its rule and
+    // viewBox ride along, or the agent reads user units as fractions.
+    const bases = {};
+    for (const [id, g] of Object.entries(d.targets)) {
+      if (id === PAGE) { coords = g.coords; }
+      else if (g.notes.length) {
+        bases[id] = { basis: g.basis, coords: g.coords, ...(g.viewBox ? { viewBox: g.viewBox } : {}) };
+      }
+      for (const n of g.notes) {
+        const { id: noteId, text, kind, target, ...geometry } = n;
+        items.push({
+          kind: 'comment',
+          id: noteId,
+          shape: kind,
+          said: text,
+          ...(id === PAGE ? {} : { target_id: id }),
+          anchor: target || null,
+          ...geometry,
+        });
+      }
+    }
+    const asked = requests.map((r, i) => requestView(r, i));
+    return {
+      page: location.pathname.split('/').pop() || location.pathname,
+      answered: asked.filter(v => v.answered).length,
+      unanswered: asked.filter(v => !v.answered).length,
+      orphaned: orphans().length,
+      ...(coords ? { coords } : {}),
+      ...(Object.keys(bases).length ? { targets: bases } : {}),
+      items,
+    };
+  }
+
   Object.assign(pen, {
     // ---------- targets ----------
     addTarget(spec) {
@@ -303,7 +417,55 @@ export function create(opts = {}) {
       repaint();
       emit('change', { action: 'clear' });
     },
+    // ---------- requests ----------
+    // Declarative and idempotent: the list REPLACES the previous declaration.
+    // Safe before hydration, because it writes nothing — an answer that arrives
+    // milliseconds later simply lights up a chip that is already on screen.
+    setRequests(list) {
+      requests = (list || []).filter(spec => spec && spec.key).map(spec => {
+        const node = spec.el || (spec.selector ? document.querySelector(spec.selector) : null);
+        return {
+          key: spec.key,
+          ask: spec.ask || '',
+          // the live node, so a declared request never depends on a css path;
+          // `target` is for the export and for re-finding it after a re-render
+          node: node || null,
+          target: node ? describeEl(node) : (spec.selector ? { selector: spec.selector } : null),
+        };
+      });
+      tries = 0;
+      settle();
+      emit('change', { action: 'requests' });
+      return requests.map(requestView);
+    },
+    requests: () => requests.map(requestView),
+    orphans,
+    // purely visual: rings the chip whose question is on screen right now
+    openRequest: key => noteSurface.setOpenRequest(key ?? null),
+    // '' clears the answer. That is the only path that deletes one, and it is
+    // always a thing the reviewer clicked.
+    answer(key, text) {
+      const i = requests.findIndex(r => r.key === key);
+      const r = i >= 0 ? requests[i] : null;
+      const said = text ?? '';
+      if (!said.trim()) {
+        store.forgetAnswer(key);
+      } else {
+        const prev = store.answer(key);
+        store.setAnswer(key, {
+          said,
+          // an orphan being edited keeps the question it was originally asked
+          q: r ? r.ask : (prev ? prev.q : ''),
+          at: new Date().toISOString(),
+        });
+      }
+      store.save();
+      noteSurface.layout();
+      const view = r ? requestView(r, i) : { key, ask: null, answer: said.trim() ? said : '', answered: !!said.trim(), orphaned: true };
+      emit('change', { action: 'answer', request: view });
+    },
     data,
+    review,
     layout: repaint,
     // true once a write has failed: the notes are memory-only from here
     saveFailed: () => saveFailed,
@@ -337,7 +499,17 @@ export function create(opts = {}) {
   function settle() {
     if (destroyed) return;
     repaint();
-    const pending = [...store.state.targets].some(([, g]) => g.notes.some(n => n.target && !resolve(n.target)));
+    // a request also counts as pending while its element has no box: it resolves,
+    // but a chip cannot be placed on it yet (a panel that opens later, artwork
+    // that has not sized itself)
+    const boxless = r => {
+      const el = (r.node && r.node.isConnected) ? r.node : resolve(r.target);
+      if (!el) return true;
+      const b = el.getBoundingClientRect();
+      return !b.width && !b.height;
+    };
+    const pending = [...store.state.targets].some(([, g]) => g.notes.some(n => n.target && !resolve(n.target)))
+      || requests.some(boxless);
     if (tries++ < 20 && pending) setTimeout(settle, 500);
   }
   settle();
