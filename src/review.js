@@ -246,7 +246,6 @@ export function mount(opts = {}) {
 
   // ---------- answering ----------
 
-  let saveTimer = null;
   let opened = null;   // the field's value when it was opened
 
   // Writing only on a real edit is not an optimization. An answer stores the
@@ -254,8 +253,6 @@ export function mount(opts = {}) {
   // a STALE answer with the new wording just because it was looked at, quietly
   // erasing the fact that it answered a different question.
   function flushAnswer(force) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
     if (!open) return;
     if (!force && field.value === opened) return;
     opened = field.value;
@@ -263,10 +260,11 @@ export function mount(opts = {}) {
     else if (open.kind === 'comment') pen.setNote(open.id, field.value);
   }
 
-  field.addEventListener('input', () => {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(flushAnswer, 400);
-  });
+  // Every keystroke, with no debounce. The store already collapses this: one blob
+  // write is in flight at a time and anything typed during it is folded into a
+  // single follow-up write, so typing fast costs one extra write, not one per
+  // character. A delay would only buy back the window in which work is lost.
+  field.addEventListener('input', () => flushAnswer());
 
   function openAsk(k) {
     flushAnswer();
@@ -463,8 +461,7 @@ export function mount(opts = {}) {
     if (!open) return;
     if (open.kind === 'comment') {
       const id = open.id;
-      clearTimeout(saveTimer);
-      saveTimer = null;
+      // cleared first, so nothing writes the discarded text back on the way out
       open = null;
       pen.remove(id);
       pop.hidden = true;
@@ -515,6 +512,12 @@ export function mount(opts = {}) {
   };
   window.addEventListener('keydown', onKey);
 
+  // Belt and braces now that every keystroke writes: this only has anything to do
+  // when the field changed without firing `input`. It cannot make an in-flight
+  // IndexedDB write commit, so it shortens the exposure rather than removing it.
+  const onPageHide = () => flushAnswer();
+  window.addEventListener('pagehide', onPageHide);
+
   const onLayout = () => {
     if (pop.hidden || !open) return;
     if (open.kind === 'ask') {
@@ -550,6 +553,7 @@ export function mount(opts = {}) {
       live = false;
       flushAnswer();
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pagehide', onPageHide);
       document.body.classList.remove('rprPointing');
       // the tooltips were this adapter's doing, and tolltop answers to any
       // [data-tooltip] regardless of review mode, so leaving them behind means

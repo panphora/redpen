@@ -1632,6 +1632,7 @@
       answer(key2, text) {
         const i = requests.findIndex((r2) => r2.key === key2);
         const r = i >= 0 ? requests[i] : null;
+        const before = r ? requestView(r, i) : null;
         const said = text ?? "";
         if (!said.trim()) {
           store.forgetAnswer(key2);
@@ -1645,8 +1646,8 @@
           });
         }
         store.save();
-        noteSurface.layout();
         const view = r ? requestView(r, i) : { key: key2, ask: null, answer: said.trim() ? said : "", answered: !!said.trim(), orphaned: true };
+        if (before && (before.answered !== view.answered || before.stale !== view.stale)) noteSurface.layout();
         emit("change", { action: "answer", request: view });
       },
       data,

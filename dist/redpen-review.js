@@ -1632,6 +1632,7 @@
       answer(key2, text) {
         const i = requests.findIndex((r2) => r2.key === key2);
         const r = i >= 0 ? requests[i] : null;
+        const before = r ? requestView(r, i) : null;
         const said = text ?? "";
         if (!said.trim()) {
           store.forgetAnswer(key2);
@@ -1645,8 +1646,8 @@
           });
         }
         store.save();
-        noteSurface.layout();
         const view = r ? requestView(r, i) : { key: key2, ask: null, answer: said.trim() ? said : "", answered: !!said.trim(), orphaned: true };
+        if (before && (before.answered !== view.answered || before.stale !== view.stale)) noteSurface.layout();
         emit("change", { action: "answer", request: view });
       },
       data,
@@ -1868,21 +1869,15 @@
       open = null;
       pen.openRequest(null);
     }
-    let saveTimer = null;
     let opened = null;
     function flushAnswer(force) {
-      clearTimeout(saveTimer);
-      saveTimer = null;
       if (!open) return;
       if (!force && field.value === opened) return;
       opened = field.value;
       if (open.kind === "ask") pen.answer(open.key, field.value);
       else if (open.kind === "comment") pen.setNote(open.id, field.value);
     }
-    field.addEventListener("input", () => {
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(flushAnswer, 400);
-    });
+    field.addEventListener("input", () => flushAnswer());
     function openAsk(k) {
       flushAnswer();
       const list = pen.requests();
@@ -2044,8 +2039,6 @@
       if (!open) return;
       if (open.kind === "comment") {
         const id = open.id;
-        clearTimeout(saveTimer);
-        saveTimer = null;
         open = null;
         pen.remove(id);
         pop.hidden = true;
@@ -2087,6 +2080,8 @@
       if (e.key === "p") pointing(pen.mode() !== "note");
     };
     window.addEventListener("keydown", onKey);
+    const onPageHide = () => flushAnswer();
+    window.addEventListener("pagehide", onPageHide);
     const onLayout = () => {
       if (pop.hidden || !open) return;
       if (open.kind === "ask") {
@@ -2122,6 +2117,7 @@
         live = false;
         flushAnswer();
         window.removeEventListener("keydown", onKey);
+        window.removeEventListener("pagehide", onPageHide);
         document.body.classList.remove("rprPointing");
         for (const node of tooltipped) node.removeAttribute("data-tooltip");
         tooltipped.length = 0;

@@ -447,6 +447,7 @@ export function create(opts = {}) {
     answer(key, text) {
       const i = requests.findIndex(r => r.key === key);
       const r = i >= 0 ? requests[i] : null;
+      const before = r ? requestView(r, i) : null;
       const said = text ?? '';
       if (!said.trim()) {
         store.forgetAnswer(key);
@@ -460,8 +461,12 @@ export function create(opts = {}) {
         });
       }
       store.save();
-      noteSurface.layout();
       const view = r ? requestView(r, i) : { key, ask: null, answer: said.trim() ? said : '', answered: !!said.trim(), orphaned: true };
+      // A chip shows a number, a tick, or a stale ring. Nothing else about it
+      // depends on the answer's text, so editing one need not re-measure every
+      // marker on the page — which is what makes writing on each keystroke cheap.
+      // An orphan has no chip at all.
+      if (before && (before.answered !== view.answered || before.stale !== view.stale)) noteSurface.layout();
       emit('change', { action: 'answer', request: view });
     },
     data,
