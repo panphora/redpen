@@ -214,6 +214,74 @@ pen.review()        // the flat export, answers and comments in one list
 on purpose: `data()` has live consumers and projects notes through a fixed field
 whitelist, so anything new added there would be silently dropped.
 
+## Host integration
+
+Four things a host page needs and cannot infer from the API.
+
+### What `mount()` returns
+
+The adapter, not the engine. The engine is on `.pen`:
+
+```js
+const review = RedpenReview.mount({ clickThrough: 'canvas.beat-video' });
+
+review.pen         // the RedpenEngine, for everything in the section above
+review.refresh()   // rescan the DOM for questions (closes the popover first)
+review.open(key)   // open one question's popover
+review.next() / review.prev()   // step through unanswered questions
+review.point(on)   // toggle volunteer mode (plain note capture)
+review.copy()      // copy the whole review to the clipboard
+review.json()      // the same payload, as an object
+review.destroy()
+```
+
+**`mount` and `destroy` are a safe cycle**, which is what a review-mode toggle needs.
+`destroy` flushes the answer being typed before it tears anything down, drops its
+listeners, strips the `data-tooltip` attributes it added, removes the click-through
+rule, and destroys the engine. Answers live in IndexedDB, so a later `mount` picks up
+exactly where the last one left off. Call `refresh()` rather than remounting when only
+the questions changed.
+
+### Moving the bar
+
+The adapter's stylesheet is **prepended**, not appended, so a host stylesheet of equal
+specificity wins without `!important`:
+
+```css
+.rprBar { bottom: 52px; }   /* clear of the page's own bottom-right control */
+```
+
+Class names worth knowing: `.rprBar` (the bottom-right control bar), `.rprPop` (the
+question popover), `.rprCount` (the "3/6" counter), and `body.rprPointing` while
+volunteer mode is on.
+
+### Sitting above the overlay
+
+Point mode covers the viewport with a capture overlay, so a host control that must stay
+clickable while pointing is on (the toggle that turns review off, typically) needs to
+outrank it. The layers:
+
+| z-index | layer |
+|---|---|
+| 99990 | `.laInkLayer` finished strokes |
+| 99991 | `.laMarkers` note markers, `.laReqs` request chips |
+| 99992 | `.laOverlay` capture overlay (point mode) |
+| 99993 | `#laNotes` default-UI panel (`dist/redpen.js` only) |
+| 99995 | `.rprBar` |
+| 99996 | `.rprPop` |
+
+### Excluding your own chrome
+
+`[data-la-ui]` is not only redpen's marker for its own injected UI: `identify.js` skips
+any `[data-la-ui]` subtree, so a host puts it on its own controls to keep them from
+being annotated.
+
+```html
+<button id="review-toggle" data-la-ui="1">review marks</button>
+```
+
+Without it, a click beside your button files a note about your button.
+
 ## Source layout
 
 ```
@@ -270,6 +338,11 @@ show-filtering, overshoot binding, resize, persistence and `data()`.
 
 ## Consumers
 
+- `hyperclay-new-website/index.html` — the review adapter, and the reason it exists.
+  Vendors `dist/redpen-review.js` into `assets/vendor/`, mounts and destroys it on a
+  `body.review` class toggle, and uses every hook in [Host integration](#host-integration):
+  the bar moved to clear its own toggle, that toggle at z-index 99993 and marked
+  `data-la-ui`, and `clickThrough: 'canvas.beat-video'` for the baked animations.
 - `experiments/homepage-illustrations/` — `notes.js`, `draw.js`, `feedback-hub.js`
   there are symlinks into this repo's `src/`; scene pages import them as modules
   (notes via the `lineart.js` import, draw via its own script tag).
