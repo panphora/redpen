@@ -6,17 +6,26 @@
   "description": "Page review tools: element/area/region notes, freehand ink, and a COPY JSON hub for handing feedback to agents",
   "main": "src/index.js",
   "scripts": {
-    "build": "npm run build:standalone && npm run build:core && npm run build:review",
+    "build": "npm run build:standalone && npm run build:core && npm run build:review && npm run build:wire",
     "build:standalone": "esbuild src/index.js --bundle --format=iife --outfile=dist/redpen.js",
     "build:core": "esbuild src/index-core.js --bundle --format=iife --outfile=dist/redpen-core.js",
-    "build:review": "esbuild src/index-review.js --bundle --format=iife --outfile=dist/redpen-review.js"
+    "build:review": "esbuild src/index-review.js --bundle --format=iife --outfile=dist/redpen-review.js",
+    "test": "web-test-runner",
+    "build:wire": "esbuild src/index-wire.js --bundle --format=iife --outfile=dist/redpen-wire.js"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "@esm-bundle/chai": "^4.3.4-fix.0",
+    "@web/test-runner": "^0.20.2",
+    "@web/test-runner-playwright": "^0.11.1",
+    "esbuild": "^0.25.0",
+    "playwright-core": "1.56.1"
   },
   "hyper": {
     "kind": "tool",
     "status": "active",
     "url": "internal"
+  },
+  "overrides": {
+    "playwright-core": "1.56.1"
   }
 }

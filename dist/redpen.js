@@ -453,6 +453,20 @@
     return document.body;
   }
 
+  // src/mark.js
+  var CLAY = "no-save no-snapshot no-watch";
+  var BARE = ["no-save", "no-snapshot", "no-watch"];
+  function mark(node) {
+    node.setAttribute("sap-ignore", "");
+    node.setAttribute("clay", CLAY);
+    for (const token of BARE) node.setAttribute(token, "");
+    return node;
+  }
+  function chrome(node) {
+    node.dataset.laUi = "1";
+    return mark(node);
+  }
+
   // src/note-surface.js
   var round3 = (n) => Math.round(n * 1e3) / 1e3;
   var MAX_AREA_ELEMENTS = 15;
@@ -484,26 +498,24 @@
   }
   function injectSurfaceStyles() {
     if (document.getElementById("laSurfaceStyle")) return;
-    const style = document.createElement("style");
+    const style = mark(document.createElement("style"));
     style.id = "laSurfaceStyle";
     style.textContent = SURFACE_CSS;
     document.head.appendChild(style);
   }
-  function chrome(el, cls, id) {
+  function chrome2(el, cls, id) {
     el.className = cls;
     if (id) el.id = id;
-    el.dataset.laUi = "1";
-    el.setAttribute("sap-ignore", "");
-    return el;
+    return chrome(el);
   }
   function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick }) {
     const describe2 = identify || describe;
     injectSurfaceStyles();
-    const markers = chrome(document.createElement("div"), "laMarkers", "laMarkers");
+    const markers = chrome2(document.createElement("div"), "laMarkers", "laMarkers");
     mount.appendChild(markers);
-    const reqs = chrome(document.createElement("div"), "laReqs", "laReqs");
+    const reqs = chrome2(document.createElement("div"), "laReqs", "laReqs");
     mount.appendChild(reqs);
-    const overlay = chrome(document.createElement("div"), "laOverlay", "laOverlay");
+    const overlay = chrome2(document.createElement("div"), "laOverlay", "laOverlay");
     if (mount !== document.body) overlay.style.position = "absolute";
     mount.appendChild(overlay);
     function place(el, r) {
@@ -733,7 +745,7 @@
             addTap();
           } else if (viewbox && graphic) {
             const box = viewboxRegion(t, r);
-            if (box) addNote(t.id, { kind: "region", box }, gestureOf("region", r));
+            if (box) addNote(t.id, { kind: "region", box, target: describe2(press.basis) }, gestureOf("region", r));
             else addNote(t.id, { kind: "element", target: describe2(press.el) }, gestureOf("element", r));
           } else if (graphic) {
             addNote(PAGE, {
@@ -1006,9 +1018,7 @@
   }
   function createDrawSurface({ mount, targets, store, ink, onStroke, visible }) {
     const fixed = mount === document.body;
-    const canvas = document.createElement("canvas");
-    canvas.dataset.laUi = "1";
-    canvas.setAttribute("sap-ignore", "");
+    const canvas = chrome(document.createElement("canvas"));
     Object.assign(canvas.style, {
       position: fixed ? "fixed" : "absolute",
       inset: "0",
@@ -1146,20 +1156,16 @@
 
   // src/ink-layer.js
   function createInkLayer({ mount, targets }) {
-    const anchor = document.createElement("div");
+    const anchor = chrome(document.createElement("div"));
     anchor.className = "laInkLayer";
-    anchor.dataset.laUi = "1";
-    anchor.setAttribute("sap-ignore", "");
     mount.appendChild(anchor);
     const layers = /* @__PURE__ */ new Map();
     function layerFor(t) {
       let svg = layers.get(t.id);
       if (!svg) {
-        svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg = chrome(document.createElementNS("http://www.w3.org/2000/svg", "svg"));
         svg.setAttribute("class", "laMarks");
         svg.dataset.laTarget = t.id;
-        svg.dataset.laUi = "1";
-        svg.setAttribute("sap-ignore", "");
         anchor.appendChild(svg);
         layers.set(t.id, svg);
       }
@@ -1726,9 +1732,7 @@
   var copyBtn = null;
   function ensureUI() {
     if (toolRow) return;
-    const bar = document.createElement("div");
-    bar.dataset.laUi = "1";
-    bar.setAttribute("sap-ignore", "");
+    const bar = chrome(document.createElement("div"));
     Object.assign(bar.style, {
       position: "fixed",
       right: "14px",
@@ -1840,15 +1844,13 @@
   }
   function attachNotesPanel(pen2) {
     if (!document.getElementById("laPanelStyle")) {
-      const style = document.createElement("style");
+      const style = mark(document.createElement("style"));
       style.id = "laPanelStyle";
       style.textContent = PANEL_CSS;
       document.head.appendChild(style);
     }
-    const panel = document.createElement("aside");
+    const panel = chrome(document.createElement("aside"));
     panel.id = "laNotes";
-    panel.dataset.laUi = "1";
-    panel.setAttribute("sap-ignore", "");
     panel.innerHTML = `<h2>Notes</h2>
   <p class="hint">Toggle NOTES, then click an element or drag a box across an area. COPY JSON sends it all back.</p>
   <div id="laNoteList"></div>

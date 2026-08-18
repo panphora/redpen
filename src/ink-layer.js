@@ -6,11 +6,11 @@
 // overlay is a sibling of the target, so the host swapping its SVG leaves the
 // ink untouched.
 
+import { chrome } from './mark.js';
+
 export function createInkLayer({ mount, targets }) {
-  const anchor = document.createElement('div');
+  const anchor = chrome(document.createElement('div'));
   anchor.className = 'laInkLayer';
-  anchor.dataset.laUi = '1';
-  anchor.setAttribute('sap-ignore', '');
   mount.appendChild(anchor);
 
   const layers = new Map();
@@ -18,11 +18,9 @@ export function createInkLayer({ mount, targets }) {
   function layerFor(t) {
     let svg = layers.get(t.id);
     if (!svg) {
-      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg = chrome(document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
       svg.setAttribute('class', 'laMarks');
       svg.dataset.laTarget = t.id;
-      svg.dataset.laUi = '1';
-      svg.setAttribute('sap-ignore', '');
       anchor.appendChild(svg);
       layers.set(t.id, svg);
     }

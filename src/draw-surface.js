@@ -6,6 +6,8 @@
 //
 // Injects only the canvas. No bar, no keyboard: the host routes undo.
 
+import { chrome } from './mark.js';
+
 export const CFG = {
   width: 3,           // stroke width, px
   color: '#000',
@@ -174,9 +176,7 @@ export function drawStroke(ctx, pts) {
 export function createDrawSurface({ mount, targets, store, ink, onStroke, visible }) {
   const fixed = mount === document.body;
 
-  const canvas = document.createElement('canvas');
-  canvas.dataset.laUi = '1';
-  canvas.setAttribute('sap-ignore', '');
+  const canvas = chrome(document.createElement('canvas'));
   Object.assign(canvas.style, {
     position: fixed ? 'fixed' : 'absolute', inset: '0', zIndex: 99990,
     pointerEvents: 'none', cursor: 'crosshair', touchAction: 'none',

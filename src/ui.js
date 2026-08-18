@@ -11,6 +11,7 @@
 //   handle.setOn(v)   // toggle from outside; keeps the pill in sync
 
 import { resolve } from './identify.js';
+import { mark, chrome } from './mark.js';
 
 const INK = '#17110C', FILL = '#FDFDFC';
 const MONO = 'ui-monospace, "SF Mono", Menlo, monospace';
@@ -52,9 +53,7 @@ let copyRow = null, toolRow = null, copyBtn = null;
 
 function ensureUI() {
   if (toolRow) return;
-  const bar = document.createElement('div');
-  bar.dataset.laUi = '1';
-  bar.setAttribute('sap-ignore', '');
+  const bar = chrome(document.createElement('div'));
   Object.assign(bar.style, {
     position: 'fixed', right: '14px', bottom: '14px', zIndex: 99995,
     display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px',
@@ -153,16 +152,14 @@ export function off() {
 
 export function attachNotesPanel(pen) {
   if (!document.getElementById('laPanelStyle')) {
-    const style = document.createElement('style');
+    const style = mark(document.createElement('style'));
     style.id = 'laPanelStyle';
     style.textContent = PANEL_CSS;
     document.head.appendChild(style);
   }
 
-  const panel = document.createElement('aside');
+  const panel = chrome(document.createElement('aside'));
   panel.id = 'laNotes';
-  panel.dataset.laUi = '1';
-  panel.setAttribute('sap-ignore', '');
   panel.innerHTML = `<h2>Notes</h2>
   <p class="hint">Toggle NOTES, then click an element or drag a box across an area. COPY JSON sends it all back.</p>
   <div id="laNoteList"></div>

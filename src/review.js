@@ -20,6 +20,7 @@
 // click. Reading is the default and pointing is the exception.
 
 import { create } from './engine.js';
+import { mark, chrome } from './mark.js';
 import { tailRect } from './note-surface.js';
 
 const CSS = `
@@ -69,7 +70,15 @@ const CSS = `
   .rprPop .rprOrphan .q { color: var(--ink-faint, #8A857E); font-size: 11.5px; }
   .rprPop .rprOrphan + .rprOrphan { border-top: 1px solid var(--line, #DCD8D2); padding-top: 10px; }
 
-  body.rprPointing main { outline: 1px solid var(--flag, #e5484d); outline-offset: 6px; }
+  .rprTip { position: fixed; z-index: 99997; max-width: 320px; pointer-events: none;
+    font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace); font-size: 11.5px; line-height: 1.45;
+    color: var(--ink, #17110C); background: var(--card, #FDFDFC); border: 1px solid var(--line, #DCD8D2);
+    border-radius: 7px; padding: 6px 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .12); }
+
+  /* Pointing is read off redpen's own bar, never off a class on the authored
+     <body>: body's attributes changing makes the whole body a dirty root, so one
+     click on point would protect the entire page from the agent's own edit. */
+  body:has(.rprBar[data-pointing]) main { outline: 1px solid var(--flag, #e5484d); outline-offset: 6px; }
 `;
 
 const el = (tag, cls, text) => {
@@ -79,22 +88,13 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-// Chrome the engine must never mistake for page content: topElementAt and
-// elementsInArea both skip [data-la-ui] subtrees, so without this a click beside
-// the popover files a note about the popover.
-function chrome(node) {
-  node.dataset.laUi = '1';
-  node.setAttribute('sap-ignore', '');
-  return node;
-}
-
 // Prepended, not appended: these are defaults a host is expected to override
 // (where the bar sits, mostly), and mount() runs after the page's own <style>
 // has been parsed. Appending would win every same-specificity tie and force the
 // host into specificity games with its own review chrome.
 function injectStyles() {
   if (document.getElementById('rprStyle')) return;
-  const style = el('style');
+  const style = mark(el('style'));
   style.id = 'rprStyle';
   style.textContent = CSS;
   document.head.prepend(style);
@@ -123,13 +123,12 @@ export function mount(opts = {}) {
   const key = opts.key ?? ('review:' + location.pathname);
   // a selector for artwork the page covers with pointer-events:none; see pointing
   const clickThrough = opts.clickThrough || '';
+  let clickThroughRule = null;
   injectStyles();
 
   const pen = create({ key, mount: document.body });
 
   // ---------- declaring the questions ----------
-
-  const tooltipped = [];
 
   function scan() {
     const list = [];
@@ -146,12 +145,6 @@ export function mount(opts = {}) {
         continue;
       }
       seen.add(node.id);
-      // one string in the file: the hover preview keeps working through whatever
-      // tooltip library the page already loads
-      if (!node.dataset.tooltip) {
-        node.dataset.tooltip = ask;
-        tooltipped.push(node);
-      }
       list.push({ key: node.id, ask, el: node });
     }
     pen.setRequests(list);
@@ -169,6 +162,58 @@ export function mount(opts = {}) {
   const copyBtn = el('button', null, 'copy');
   bar.append(prevBtn, count, nextBtn, orphanBtn, pointBtn, copyBtn);
   document.body.appendChild(bar);
+
+  // ---------- the question's hover preview ----------
+
+  // The ask used to be copied onto the page's own question elements as
+  // data-tooltip, so whatever tooltip library the page already loads would show
+  // it. That writes an attribute onto an AUTHORED node: it reaches the saved
+  // file, and it makes every question element a dirty root that scoped live-sync
+  // then protects from the agent's own edit, which is the one thing this whole
+  // chain exists to let through. redpen renders the preview itself now, reading
+  // the ask straight off the page's attribute and writing nothing back.
+  //
+  // A page that put its own data-tooltip on a question still wins, which is what
+  // the old copy did too: two bubbles for one element is worse than either.
+  const tip = chrome(el('div', 'rprTip'));
+  tip.hidden = true;
+  document.body.appendChild(tip);
+
+  // Guarded, because `hidden = true` writes the attribute whether or not it
+  // changed, and this runs on every pointer transition across the page. On a
+  // host that reads redpen's marking those records are dropped at intake; on one
+  // that does not, moving the mouse would trigger an autosave.
+  function hideTip() {
+    if (!tip.hidden) tip.hidden = true;
+  }
+
+  function showTip(node) {
+    const text = node.dataset.tooltip ? '' : node.getAttribute(attr);
+    if (!text) return hideTip();
+    tip.textContent = text;
+    tip.hidden = false;
+    // Measured after it is filled and visible, or the flip below reads a height
+    // of zero and never flips.
+    const r = node.getBoundingClientRect();
+    const t = tip.getBoundingClientRect();
+    const above = r.top - t.height - 8;
+    tip.style.left = Math.max(8, Math.min(r.left, innerWidth - t.width - 8)) + 'px';
+    tip.style.top = (above < 8 ? r.bottom + 8 : above) + 'px';
+  }
+
+  // One handler for both showing and hiding: pointing at anything that is not a
+  // question is the ordinary way a preview ends. While the capture overlay is up
+  // every event targets the overlay, so pointing mode hides it for free.
+  const onHover = e => {
+    const node = e.target && e.target.closest ? e.target.closest('[' + attr + ']') : null;
+    node ? showTip(node) : hideTip();
+  };
+
+  document.addEventListener('mouseover', onHover);
+  document.addEventListener('focusin', onHover);
+  // The bubble is position:fixed and placed once, so a scroll leaves it pointing
+  // at where the question used to be.
+  window.addEventListener('scroll', hideTip, true);
 
   function refresh() {
     const list = pen.requests();
@@ -237,11 +282,54 @@ export function mount(opts = {}) {
     else atBar();
   }
 
-  function close() {
+  // The engine has no "the reviewer finished writing" event, and none of the
+  // three it does have is one: `item:add` fires while the note is still empty,
+  // `change` fires on every keystroke, and the done button usually emits nothing
+  // at all, because it routes through flushAnswer, which returns early when the
+  // text has not changed since the last one.
+  //
+  // So the signal hangs off LEAVING a comment, not off any particular button,
+  // and every way out goes through here: done, close, Escape, turning point mode
+  // on, opening a question or the orphan list, tapping a second comment while
+  // the first is open, and destroy. Only discard is different, and it clears
+  // `open` itself before removing the item, which is what makes it silent.
+  function leaveOpen() {
+    const finished = open && open.kind === 'comment' ? open.id : null;
     flushAnswer();
-    pop.hidden = true;
     open = null;
+    if (finished) announce(finished);
+  }
+
+  function close() {
+    leaveOpen();
+    pop.hidden = true;
     pen.openRequest(null);
+  }
+
+  // A Set, not one slot. mount() can be given a listener and a transport bundle
+  // can add its own later, and two attachments must not silently replace each
+  // other's callback, nor may one detach remove a listener it never installed.
+  const commentListeners = new Set();
+  if (typeof opts.onComment === 'function') commentListeners.add(opts.onComment);
+
+  function announce(id) {
+    if (!commentListeners.size) return;
+    // The whole projection, not just the item: an area note on a registered
+    // target reads as fractions of the wrong box without the basis and coords
+    // that live at the top of this envelope, and building a second per-item
+    // projection here is how those two rules drift apart.
+    const review = pen.review();
+    const item = review.items.find(i => i.kind === 'comment' && i.id === id);
+    // Whitespace is not a comment. The stored note keeps whatever was typed;
+    // this is only about what counts as something to send.
+    if (!item || !item.said || !item.said.trim()) return;
+    for (const fn of [...commentListeners]) {
+      try {
+        fn(item, review);
+      } catch (err) {
+        console.warn('[review] onComment failed', err);
+      }
+    }
   }
 
   // ---------- answering ----------
@@ -267,7 +355,7 @@ export function mount(opts = {}) {
   field.addEventListener('input', () => flushAnswer());
 
   function openAsk(k) {
-    flushAnswer();
+    leaveOpen();
     const list = pen.requests();
     const r = list.find(x => x.key === k);
     if (!r) return;
@@ -291,7 +379,7 @@ export function mount(opts = {}) {
   }
 
   function openComment(item) {
-    flushAnswer();
+    leaveOpen();
     open = { kind: 'comment', id: item.id };
     pen.openRequest(null);
     const t = item.target || {};
@@ -315,7 +403,7 @@ export function mount(opts = {}) {
   // David's words against a question the page no longer asks, and the only way
   // one leaves is him clicking discard.
   function openOrphans() {
-    flushAnswer();
+    leaveOpen();
     open = { kind: 'orphans' };
     pen.openRequest(null);
     const list = pen.orphans();
@@ -374,15 +462,20 @@ export function mount(opts = {}) {
   // rule also needs no save-and-restore, and `!important` is what beats the
   // inline style the artwork writes on itself.
   if (clickThrough) {
-    const rule = el('style');
+    clickThroughRule = mark(el('style'));
+    const rule = clickThroughRule;
     rule.id = 'rprClickThrough';
-    rule.textContent = `body.rprPointing ${clickThrough} { pointer-events: auto !important; }`;
+    rule.textContent = `body:has(.rprBar[data-pointing]) ${clickThrough} { pointer-events: auto !important; }`;
     document.head.appendChild(rule);
   }
 
   // The rule can stop working silently: on this page the inline style is written
   // by a generated file, and the day it moves into a class of its own the
   // specificity changes underneath us.
+  // Held, not looked up. `document.getElementById('rprClickThrough')` in destroy
+  // deletes whatever holds that id, including a node the PAGE authored, and a
+  // deletion is a local change scoped live-sync will splice into the next disk
+  // frame — so redpen would erase the agent's version of that node.
   function assertClickThrough() {
     if (!clickThrough) return;
     for (const node of document.querySelectorAll(clickThrough)) {
@@ -398,7 +491,7 @@ export function mount(opts = {}) {
 
   function pointing(on) {
     if (on) close();
-    document.body.classList.toggle('rprPointing', on);
+    bar.toggleAttribute('data-pointing', on);
     pen.setMode(on ? 'note' : null);
     if (on) assertClickThrough();
     refresh();
@@ -548,22 +641,30 @@ export function mount(opts = {}) {
     prev: () => step(-1),
     point: pointing,
     copy,
+    // Registered after the fact so a transport can be a separate bundle that
+    // attaches to this object, rather than something mount() has to be told
+    // about before it runs. Returns its own unsubscribe: a caller may only ever
+    // remove the listener it added.
+    onComment(fn) {
+      if (typeof fn !== 'function') return () => {};
+      commentListeners.add(fn);
+      return () => commentListeners.delete(fn);
+    },
     json: () => pen.review(),
     destroy() {
       live = false;
-      flushAnswer();
+      leaveOpen();
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('pagehide', onPageHide);
-      document.body.classList.remove('rprPointing');
-      // the tooltips were this adapter's doing, and tolltop answers to any
-      // [data-tooltip] regardless of review mode, so leaving them behind means
-      // hovering a flag still shows the question after review is switched off
-      for (const node of tooltipped) node.removeAttribute('data-tooltip');
-      tooltipped.length = 0;
-      document.getElementById('rprClickThrough')?.remove();
+      document.removeEventListener('mouseover', onHover);
+      document.removeEventListener('focusin', onHover);
+      window.removeEventListener('scroll', hideTip, true);
+      clickThroughRule?.remove();
+      clickThroughRule = null;
       pen.destroy();
       bar.remove();
       pop.remove();
+      tip.remove();
     },
   };
 }

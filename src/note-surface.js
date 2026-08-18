@@ -13,6 +13,7 @@
 
 import { describe as defaultDescribe, graphicBasis, resolve, topElementAt } from './identify.js';
 import { PAGE } from './targets.js';
+import { mark, chrome as markChrome } from './mark.js';
 
 const round3 = n => Math.round(n * 1000) / 1000;
 const MAX_AREA_ELEMENTS = 15;
@@ -56,7 +57,7 @@ export function tailRect(el) {
 
 export function injectSurfaceStyles() {
   if (document.getElementById('laSurfaceStyle')) return;
-  const style = document.createElement('style');
+  const style = mark(document.createElement('style'));
   style.id = 'laSurfaceStyle';
   style.textContent = SURFACE_CSS;
   document.head.appendChild(style);
@@ -65,9 +66,7 @@ export function injectSurfaceStyles() {
 function chrome(el, cls, id) {
   el.className = cls;
   if (id) el.id = id;
-  el.dataset.laUi = '1';
-  el.setAttribute('sap-ignore', '');
-  return el;
+  return markChrome(el);
 }
 
 export function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick }) {
@@ -340,7 +339,11 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
         addTap();
       } else if (viewbox && graphic) {
         const box = viewboxRegion(t, r);
-        if (box) addNote(t.id, { kind: 'region', box }, gestureOf('region', r));
+        // The descriptor rides along even though the viewBox already places this
+        // note: it is what tells a consumer WHICH element on the page the region
+        // is inside, and a transport that has to name the nearest keyed ancestor
+        // has nothing to walk from without it.
+        if (box) addNote(t.id, { kind: 'region', box, target: describe(press.basis) }, gestureOf('region', r));
         else addNote(t.id, { kind: 'element', target: describe(press.el) }, gestureOf('element', r));
       } else if (graphic) {
         addNote(PAGE, {

@@ -453,6 +453,20 @@
     return document.body;
   }
 
+  // src/mark.js
+  var CLAY = "no-save no-snapshot no-watch";
+  var BARE = ["no-save", "no-snapshot", "no-watch"];
+  function mark(node) {
+    node.setAttribute("sap-ignore", "");
+    node.setAttribute("clay", CLAY);
+    for (const token of BARE) node.setAttribute(token, "");
+    return node;
+  }
+  function chrome(node) {
+    node.dataset.laUi = "1";
+    return mark(node);
+  }
+
   // src/note-surface.js
   var round3 = (n) => Math.round(n * 1e3) / 1e3;
   var MAX_AREA_ELEMENTS = 15;
@@ -484,26 +498,24 @@
   }
   function injectSurfaceStyles() {
     if (document.getElementById("laSurfaceStyle")) return;
-    const style = document.createElement("style");
+    const style = mark(document.createElement("style"));
     style.id = "laSurfaceStyle";
     style.textContent = SURFACE_CSS;
     document.head.appendChild(style);
   }
-  function chrome(el2, cls, id) {
+  function chrome2(el2, cls, id) {
     el2.className = cls;
     if (id) el2.id = id;
-    el2.dataset.laUi = "1";
-    el2.setAttribute("sap-ignore", "");
-    return el2;
+    return chrome(el2);
   }
   function createNoteSurface({ mount: mount2, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick }) {
     const describe2 = identify || describe;
     injectSurfaceStyles();
-    const markers = chrome(document.createElement("div"), "laMarkers", "laMarkers");
+    const markers = chrome2(document.createElement("div"), "laMarkers", "laMarkers");
     mount2.appendChild(markers);
-    const reqs = chrome(document.createElement("div"), "laReqs", "laReqs");
+    const reqs = chrome2(document.createElement("div"), "laReqs", "laReqs");
     mount2.appendChild(reqs);
-    const overlay = chrome(document.createElement("div"), "laOverlay", "laOverlay");
+    const overlay = chrome2(document.createElement("div"), "laOverlay", "laOverlay");
     if (mount2 !== document.body) overlay.style.position = "absolute";
     mount2.appendChild(overlay);
     function place(el2, r) {
@@ -733,7 +745,7 @@
             addTap();
           } else if (viewbox && graphic) {
             const box = viewboxRegion(t, r);
-            if (box) addNote(t.id, { kind: "region", box }, gestureOf("region", r));
+            if (box) addNote(t.id, { kind: "region", box, target: describe2(press.basis) }, gestureOf("region", r));
             else addNote(t.id, { kind: "element", target: describe2(press.el) }, gestureOf("element", r));
           } else if (graphic) {
             addNote(PAGE, {
@@ -1006,9 +1018,7 @@
   }
   function createDrawSurface({ mount: mount2, targets, store, ink, onStroke, visible }) {
     const fixed = mount2 === document.body;
-    const canvas = document.createElement("canvas");
-    canvas.dataset.laUi = "1";
-    canvas.setAttribute("sap-ignore", "");
+    const canvas = chrome(document.createElement("canvas"));
     Object.assign(canvas.style, {
       position: fixed ? "fixed" : "absolute",
       inset: "0",
@@ -1146,20 +1156,16 @@
 
   // src/ink-layer.js
   function createInkLayer({ mount: mount2, targets }) {
-    const anchor = document.createElement("div");
+    const anchor = chrome(document.createElement("div"));
     anchor.className = "laInkLayer";
-    anchor.dataset.laUi = "1";
-    anchor.setAttribute("sap-ignore", "");
     mount2.appendChild(anchor);
     const layers = /* @__PURE__ */ new Map();
     function layerFor(t) {
       let svg = layers.get(t.id);
       if (!svg) {
-        svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg = chrome(document.createElementNS("http://www.w3.org/2000/svg", "svg"));
         svg.setAttribute("class", "laMarks");
         svg.dataset.laTarget = t.id;
-        svg.dataset.laUi = "1";
-        svg.setAttribute("sap-ignore", "");
         anchor.appendChild(svg);
         layers.set(t.id, svg);
       }
@@ -1736,7 +1742,15 @@
   .rprPop .rprOrphan .q { color: var(--ink-faint, #8A857E); font-size: 11.5px; }
   .rprPop .rprOrphan + .rprOrphan { border-top: 1px solid var(--line, #DCD8D2); padding-top: 10px; }
 
-  body.rprPointing main { outline: 1px solid var(--flag, #e5484d); outline-offset: 6px; }
+  .rprTip { position: fixed; z-index: 99997; max-width: 320px; pointer-events: none;
+    font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace); font-size: 11.5px; line-height: 1.45;
+    color: var(--ink, #17110C); background: var(--card, #FDFDFC); border: 1px solid var(--line, #DCD8D2);
+    border-radius: 7px; padding: 6px 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .12); }
+
+  /* Pointing is read off redpen's own bar, never off a class on the authored
+     <body>: body's attributes changing makes the whole body a dirty root, so one
+     click on point would protect the entire page from the agent's own edit. */
+  body:has(.rprBar[data-pointing]) main { outline: 1px solid var(--flag, #e5484d); outline-offset: 6px; }
 `;
   var el = (tag, cls, text) => {
     const n = document.createElement(tag);
@@ -1744,14 +1758,9 @@
     if (text != null) n.textContent = text;
     return n;
   };
-  function chrome2(node) {
-    node.dataset.laUi = "1";
-    node.setAttribute("sap-ignore", "");
-    return node;
-  }
   function injectStyles() {
     if (document.getElementById("rprStyle")) return;
-    const style = el("style");
+    const style = mark(el("style"));
     style.id = "rprStyle";
     style.textContent = CSS2;
     document.head.prepend(style);
@@ -1775,9 +1784,9 @@
     const attr = opts.attr || "data-review-ask";
     const key = opts.key ?? "review:" + location.pathname;
     const clickThrough = opts.clickThrough || "";
+    let clickThroughRule = null;
     injectStyles();
     const pen = create({ key, mount: document.body });
-    const tooltipped = [];
     function scan() {
       const list = [];
       const seen = /* @__PURE__ */ new Set();
@@ -1792,16 +1801,12 @@
           continue;
         }
         seen.add(node.id);
-        if (!node.dataset.tooltip) {
-          node.dataset.tooltip = ask;
-          tooltipped.push(node);
-        }
         list.push({ key: node.id, ask, el: node });
       }
       pen.setRequests(list);
       return list.length;
     }
-    const bar = chrome2(el("div", "rprBar"));
+    const bar = chrome(el("div", "rprBar"));
     const prevBtn = el("button", "rprStep", "\u2039");
     const count = el("span", "rprCount", "0/0");
     const nextBtn = el("button", "rprStep", "\u203A");
@@ -1810,6 +1815,30 @@
     const copyBtn = el("button", null, "copy");
     bar.append(prevBtn, count, nextBtn, orphanBtn, pointBtn, copyBtn);
     document.body.appendChild(bar);
+    const tip = chrome(el("div", "rprTip"));
+    tip.hidden = true;
+    document.body.appendChild(tip);
+    function hideTip() {
+      if (!tip.hidden) tip.hidden = true;
+    }
+    function showTip(node) {
+      const text = node.dataset.tooltip ? "" : node.getAttribute(attr);
+      if (!text) return hideTip();
+      tip.textContent = text;
+      tip.hidden = false;
+      const r = node.getBoundingClientRect();
+      const t = tip.getBoundingClientRect();
+      const above = r.top - t.height - 8;
+      tip.style.left = Math.max(8, Math.min(r.left, innerWidth - t.width - 8)) + "px";
+      tip.style.top = (above < 8 ? r.bottom + 8 : above) + "px";
+    }
+    const onHover = (e) => {
+      const node = e.target && e.target.closest ? e.target.closest("[" + attr + "]") : null;
+      node ? showTip(node) : hideTip();
+    };
+    document.addEventListener("mouseover", onHover);
+    document.addEventListener("focusin", onHover);
+    window.addEventListener("scroll", hideTip, true);
     function refresh() {
       const list = pen.requests();
       const done = list.filter((r) => r.answered).length;
@@ -1819,7 +1848,7 @@
       orphanBtn.textContent = orphaned.length + " orphaned";
       pointBtn.classList.toggle("on", pen.mode() === "note");
     }
-    const pop = chrome2(el("div", "rprPop"));
+    const pop = chrome(el("div", "rprPop"));
     pop.hidden = true;
     const eyebrow = el("span", "rprEyebrow");
     const closeBtn = el("button", "rprX", "\xD7");
@@ -1863,11 +1892,31 @@
       if (anchor) afterScroll(anchor, () => place(anchor));
       else atBar();
     }
-    function close() {
+    function leaveOpen() {
+      const finished = open && open.kind === "comment" ? open.id : null;
       flushAnswer();
-      pop.hidden = true;
       open = null;
+      if (finished) announce(finished);
+    }
+    function close() {
+      leaveOpen();
+      pop.hidden = true;
       pen.openRequest(null);
+    }
+    const commentListeners = /* @__PURE__ */ new Set();
+    if (typeof opts.onComment === "function") commentListeners.add(opts.onComment);
+    function announce(id) {
+      if (!commentListeners.size) return;
+      const review = pen.review();
+      const item = review.items.find((i) => i.kind === "comment" && i.id === id);
+      if (!item || !item.said || !item.said.trim()) return;
+      for (const fn of [...commentListeners]) {
+        try {
+          fn(item, review);
+        } catch (err) {
+          console.warn("[review] onComment failed", err);
+        }
+      }
     }
     let opened = null;
     function flushAnswer(force) {
@@ -1879,7 +1928,7 @@
     }
     field.addEventListener("input", () => flushAnswer());
     function openAsk(k) {
-      flushAnswer();
+      leaveOpen();
       const list = pen.requests();
       const r = list.find((x) => x.key === k);
       if (!r) return;
@@ -1902,7 +1951,7 @@
       field.focus();
     }
     function openComment(item) {
-      flushAnswer();
+      leaveOpen();
       open = { kind: "comment", id: item.id };
       pen.openRequest(null);
       const t = item.target || {};
@@ -1922,7 +1971,7 @@
       field.focus();
     }
     function openOrphans() {
-      flushAnswer();
+      leaveOpen();
       open = { kind: "orphans" };
       pen.openRequest(null);
       const list = pen.orphans();
@@ -1965,9 +2014,10 @@
       flash(copyBtn, "all answered");
     }
     if (clickThrough) {
-      const rule = el("style");
+      clickThroughRule = mark(el("style"));
+      const rule = clickThroughRule;
       rule.id = "rprClickThrough";
-      rule.textContent = `body.rprPointing ${clickThrough} { pointer-events: auto !important; }`;
+      rule.textContent = `body:has(.rprBar[data-pointing]) ${clickThrough} { pointer-events: auto !important; }`;
       document.head.appendChild(rule);
     }
     function assertClickThrough() {
@@ -1984,7 +2034,7 @@
     }
     function pointing(on) {
       if (on) close();
-      document.body.classList.toggle("rprPointing", on);
+      bar.toggleAttribute("data-pointing", on);
       pen.setMode(on ? "note" : null);
       if (on) assertClickThrough();
       refresh();
@@ -2011,7 +2061,7 @@
       return text;
     }
     function fallback(text, done) {
-      const ta = chrome2(el("textarea"));
+      const ta = chrome(el("textarea"));
       ta.value = text;
       ta.style.cssText = "position:fixed;top:-1000px;left:0";
       document.body.appendChild(ta);
@@ -2112,19 +2162,31 @@
       prev: () => step(-1),
       point: pointing,
       copy,
+      // Registered after the fact so a transport can be a separate bundle that
+      // attaches to this object, rather than something mount() has to be told
+      // about before it runs. Returns its own unsubscribe: a caller may only ever
+      // remove the listener it added.
+      onComment(fn) {
+        if (typeof fn !== "function") return () => {
+        };
+        commentListeners.add(fn);
+        return () => commentListeners.delete(fn);
+      },
       json: () => pen.review(),
       destroy() {
         live = false;
-        flushAnswer();
+        leaveOpen();
         window.removeEventListener("keydown", onKey);
         window.removeEventListener("pagehide", onPageHide);
-        document.body.classList.remove("rprPointing");
-        for (const node of tooltipped) node.removeAttribute("data-tooltip");
-        tooltipped.length = 0;
-        document.getElementById("rprClickThrough")?.remove();
+        document.removeEventListener("mouseover", onHover);
+        document.removeEventListener("focusin", onHover);
+        window.removeEventListener("scroll", hideTip, true);
+        clickThroughRule?.remove();
+        clickThroughRule = null;
         pen.destroy();
         bar.remove();
         pop.remove();
+        tip.remove();
       }
     };
   }
