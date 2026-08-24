@@ -479,8 +479,18 @@
   .laBox { position: absolute; border: 2px solid #e5484d; background: rgba(229, 72, 77, .12); box-sizing: border-box; }
   .laBox.el { background: rgba(229, 72, 77, .06); }
   .laBox.laPoint { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: #e5484d; border-color: #FDFDFC; }
-  .laBox .tag { position: absolute; top: -10px; left: -10px; background: #e5484d; color: #fff;
-    font: 700 11px/16px -apple-system, sans-serif; text-align: center; min-width: 16px; height: 16px; border-radius: 8px; padding: 0 3px; }
+  /* The tag carries no number. A marker's job is to say "something was said
+     here", and the id it used to show was only ever useful to whoever was
+     reading the export, which still carries it. Losing the digits also lets the
+     tag be the small round click target that reopens the comment. */
+  .laBox .tag { position: absolute; top: -7px; left: -7px; width: 13px; height: 13px; box-sizing: border-box;
+    background: #e5484d; border: 2px solid #FDFDFC; border-radius: 50%;
+    pointer-events: auto; cursor: pointer; }
+  /* A point marker is already a dot, so it is its own click target rather than
+     wearing a second one. */
+  .laBox.laPoint { pointer-events: auto; cursor: pointer; }
+  .laBox .tag:hover, .laBox.laPoint:hover { background: #17110C; }
+  .laBox .tag.unread, .laBox.laPoint.unread { box-shadow: 0 0 0 3px rgba(229, 72, 77, .4); }
   .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
   .laOverlay { position: fixed; inset: 0; z-index: 99992; display: none; touch-action: none; }
   .laReqs { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99991; pointer-events: none; }
@@ -508,11 +518,23 @@
     if (id) el.id = id;
     return chrome(el);
   }
-  function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick }) {
+  function markerTitle(note) {
+    const said = (note.text || "").trim();
+    if (!said) return "an empty comment";
+    return said.length > 72 ? said.slice(0, 71) + "\u2026" : said;
+  }
+  function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick, onNoteClick }) {
     const describe2 = identify || describe;
     injectSurfaceStyles();
     const markers = chrome2(document.createElement("div"), "laMarkers", "laMarkers");
     mount.appendChild(markers);
+    markers.addEventListener("click", (e) => {
+      const hit = e.target.closest("[data-la-note]");
+      if (!hit) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onNoteClick?.(Number(hit.dataset.laNote));
+    });
     const reqs = chrome2(document.createElement("div"), "laReqs", "laReqs");
     mount.appendChild(reqs);
     const overlay = chrome2(document.createElement("div"), "laOverlay", "laOverlay");
@@ -570,13 +592,15 @@
         const show = visible ? visible(id) : true;
         if (!show) continue;
         for (const note of g.notes) {
+          if (note.resolved) continue;
           if (note.kind === "point" && note.point) {
             const p = screenPoint(t, note);
             if (!p) continue;
             const dot = document.createElement("div");
-            dot.className = "laBox laPoint";
+            dot.className = "laBox laPoint" + (note.unread ? " unread" : "");
             dot.dataset.laTarget = id;
-            dot.innerHTML = `<span class="tag">${note.id}</span>`;
+            dot.dataset.laNote = note.id;
+            dot.title = markerTitle(note);
             placePoint(dot, p.x, p.y);
             markers.appendChild(dot);
             continue;
@@ -586,7 +610,11 @@
           const box = document.createElement("div");
           box.className = "laBox" + (note.kind === "element" ? " el" : "");
           box.dataset.laTarget = id;
-          box.innerHTML = `<span class="tag">${note.id}</span>`;
+          box.dataset.laNote = note.id;
+          const tag = document.createElement("span");
+          tag.className = "tag" + (note.unread ? " unread" : "");
+          tag.title = markerTitle(note);
+          box.appendChild(tag);
           place(box, r);
           markers.appendChild(box);
         }
@@ -1345,6 +1373,13 @@
         const i = requests.findIndex((r) => r.key === key2);
         if (i >= 0) emit("request:click", { request: requestView(requests[i], i) });
       },
+      // The way back into a comment that already exists. Mirrors request:click,
+      // and it is the whole reason marker tags take clicks: without it a comment's
+      // popover opens once, while it is being written, and never again.
+      onNoteClick: (id) => {
+        const hit = findNote(id);
+        if (hit) emit("item:click", { item: { ...hit.item, target_id: hit.targetId } });
+      },
       addNote: (targetId, fields, gesture) => {
         const g = store.group(targetId);
         const t = targets.get(targetId);
@@ -1444,7 +1479,14 @@
             ...n.rect ? { rect: n.rect } : {},
             ...n.elements ? { elements: n.elements } : {},
             ...n.truncated ? { truncated: n.truncated } : {},
-            ...n.context ? { context: n.context } : {}
+            ...n.context ? { context: n.context } : {},
+            // The conversation and whether it was retired are feedback, so they
+            // export. This list is a whitelist and review() reads notes through
+            // it, so a field missing here is missing from Copy JSON as well, however
+            // faithfully the store round-trips it. `unread` and `draft` stay out:
+            // one is local read-state and the other is unsent scratch.
+            ...n.thread ? { thread: n.thread } : {},
+            ...n.resolved ? { resolved: n.resolved } : {}
           })),
           strokes: g.strokes.map((s) => {
             const k = s.px ? { x: 1, y: 1 } : scale;
@@ -1500,6 +1542,7 @@
         answered: asked.filter((v) => v.answered).length,
         unanswered: asked.filter((v) => !v.answered).length,
         orphaned: orphans().length,
+        resolved: items.filter((i) => i.kind === "comment" && i.resolved).length,
         ...coords ? { coords } : {},
         ...Object.keys(bases).length ? { targets: bases } : {},
         items
@@ -1565,6 +1608,31 @@
         hit.item.text = text;
         store.save();
         emit("change", { action: "note", item: hit.item });
+      },
+      // The STORED note, handed to a mutator rather than returned. `items()` gives
+      // out shallow copies, so a host that sets a field on one changes nothing the
+      // store will ever write, and the nested objects it does share by reference
+      // make that failure look like it works until it does not. Going through here
+      // also means the save and the event cannot be forgotten.
+      updateNote(id, fn) {
+        const hit = findNote(id);
+        if (!hit) return false;
+        fn(hit.item);
+        store.save();
+        emit("change", { action: "note", item: hit.item });
+        return true;
+      },
+      // Every stored note, for a sweep that must not cost one write per note. The
+      // mutator returns true when it changed something, and a sweep that changed
+      // nothing writes nothing and emits nothing, so an ordinary page load does
+      // not rewrite the whole blob for no reason.
+      updateNotes(fn) {
+        let changed = false;
+        for (const [, g] of store.state.targets) for (const n of g.notes) if (fn(n)) changed = true;
+        if (!changed) return false;
+        store.save();
+        emit("change", { action: "notes" });
+        return true;
       },
       remove(id) {
         const hit = findNote(id);
@@ -1659,6 +1727,11 @@
       data,
       review,
       layout: repaint,
+      // true once the stored blob has been read. Nothing may be WRITTEN before
+      // this: the store starts empty and a write from that window commits an empty
+      // blob over the real one. Gestures are already held off by applyMode; a host
+      // that writes notes from its own code has to ask.
+      loaded: () => loaded,
       // true once a write has failed: the notes are memory-only from here
       saveFailed: () => saveFailed,
       destroy() {

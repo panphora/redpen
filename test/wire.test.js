@@ -1,6 +1,6 @@
 import { expect } from '@esm-bundle/chai';
 import { mount } from '../src/review.js';
-import { attach, nearestKey, payloadFor } from '../src/wire.js';
+import { attach, decode, nearestKey, payloadFor } from '../src/wire.js';
 
 // The two halves of putting a comment on the wire: the review adapter noticing
 // that a comment is finished, and the transport turning it into a request a
@@ -68,6 +68,9 @@ function say(words) {
   field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+// Close enough to clayjs to be worth testing against: it honours the caller's
+// id, and `done` is settled by the test rather than resolved up front, because
+// the terminal state now travels along it rather than through the subscription.
 function fakeWire() {
   const sent = [];
   const listeners = new Set();
@@ -76,18 +79,37 @@ function fakeWire() {
     sent,
     listeners,
     send(payload, opts) {
-      const id = 'r' + ++n;
-      sent.push({ id, payload, opts });
-      return { id, state: 'sent', done: Promise.resolve({ id, state: 'done' }), cancel: () => true };
+      const id = (opts && opts.id) || 'r' + ++n;
+      let settle;
+      const done = new Promise(r => { settle = r; });
+      sent.push({ id, payload, opts, done, settle });
+      return { id, state: 'sent', done, cancel: () => true };
     },
     cancel(id) { sent.push({ cancelled: id }); return true; },
     on(fn) { listeners.add(fn); return () => listeners.delete(fn); },
-    emit(rec) { for (const fn of listeners) fn(rec); },
+    emit(rec, frame) { for (const fn of listeners) fn(rec, frame || null); },
+    // A status frame as clayjs delivers one: rec.text is sticky and the frame is
+    // the exact new line.
+    status(id, text) { this.emit({ id, state: 'acked', text, error: null }, { id, type: 'wire/status', text }); },
+    finish(id, state, error) {
+      const rec = sent.find(s => s.id === id);
+      rec.settle({ id, state, text: '', error: error || null });
+      return rec.done;
+    },
     get: () => undefined,
     list: () => [],
     isBusy: () => false,
   };
 }
+
+// the id redpen minted for the one request it sent
+const only = wire => wire.sent.find(s => s.id).id;
+
+// The store's read is async, and a turn written before it lands would be erased
+// by it, so nothing reaches the wire until it has. A synthetic pointer event
+// still reaches the capture overlay while it is display:none, which is why these
+// tests can make a note before this resolves and a person cannot.
+const settled = () => new Promise(r => setTimeout(r, 50));
 
 beforeEach(() => {
   localStorage.clear();
@@ -141,10 +163,11 @@ it('says nothing about a discarded comment', () => {
   expect(seen.length).to.equal(0);
 });
 
-it('sends the region key the merge will place the answer by', () => {
+it('sends the region key the merge will place the answer by', async () => {
   const wire = fakeWire();
   window.clay = { wire };
   review = mount({ key: 'test:payload' });
+  await settled();
   attached = attach(review);
 
   tapComment();
@@ -172,26 +195,30 @@ it('degrades to the clipboard when the page has no wire', () => {
   expect(() => footBtn('done').click()).to.not.throw();
 });
 
-it('shows what the agent is doing, and cancels it', () => {
+it('shows what the agent is doing, and cancels it', async () => {
   const wire = fakeWire();
   window.clay = { wire };
   review = mount({ key: 'test:states' });
+  await settled();
   attached = attach(review);
 
   tapComment();
   say('do the thing');
   footBtn('done').click();
+  const id = only(wire);
 
   const pill = document.querySelector('.rprWire');
   expect(pill.hidden).to.equal(false);
 
-  wire.emit({ id: 'r1', state: 'acked', text: 'reading the file', error: null });
+  wire.status(id, 'reading the file');
   expect(pill.textContent).to.contain('reading the file');
 
   pill.querySelector('button').click();
-  expect(wire.sent.some(s => s.cancelled === 'r1')).to.equal(true);
+  expect(wire.sent.some(s => s.cancelled === id)).to.equal(true);
 
-  wire.emit({ id: 'r1', state: 'error', text: '', error: 'no agent is attached to this file' });
+  // A terminal now travels on handle.done rather than the subscription, so that
+  // an outcome clayjs never emits cannot leave a request spinning forever.
+  await wire.finish(id, 'error', 'no agent is attached to this file');
   expect(pill.textContent).to.contain('no agent is attached');
 });
 
@@ -205,7 +232,7 @@ it('walks to the nearest keyed ancestor, data-id first', () => {
 it('carries a registered target basis instead of the page coords', () => {
   const item = { kind: 'comment', id: 'n1', said: 'here', target_id: 'chart', anchor: null };
   const projection = { page: 'index.htmlclay', coords: 'note boxes are fractions of the target element box', targets: { chart: { basis: { type: 'viewbox' } } }, items: [item] };
-  const payload = payloadFor(item, projection);
+  const payload = payloadFor({ ask: 'here', item, projection });
   expect(payload.target).to.deep.equal({ basis: { type: 'viewbox' } });
   expect(payload.coords).to.equal(undefined);
 });
@@ -262,10 +289,11 @@ it('says nothing about a comment that is only whitespace', () => {
 // and used to carry no element descriptor at all — so the agent got coordinates
 // with nothing to place them by, which is the exact case scoped live-sync cannot
 // merge.
-it('gives a registered-target region the key of the card it sits in', () => {
+it('gives a registered-target region the key of the card it sits in', async () => {
   const wire = fakeWire();
   window.clay = { wire };
   review = mount({ key: 'test:viewbox' });
+  await settled();
   review.pen.addTarget({ id: 'art', selector: '.art', basis: { type: 'viewbox', viewBox: [0, 0, 100, 80] } });
   attached = attach(review);
 
@@ -285,11 +313,12 @@ it('gives a registered-target region the key of the card it sits in', () => {
 // One review, two listeners, and one transport. A page that passed its own
 // callback to mount() keeps it when a transport attaches and after it detaches,
 // and attaching twice is idempotent rather than a second pill nobody can remove.
-it('keeps every comment listener separate', () => {
+it('keeps every comment listener separate', async () => {
   const wire = fakeWire();
   window.clay = { wire };
   const fromMount = [];
   review = mount({ key: 'test:listeners', onComment: item => fromMount.push(item) });
+  await settled();
 
   const first = attach(review);
   expect(attach(review)).to.equal(first);
@@ -311,4 +340,133 @@ it('keeps every comment listener separate', () => {
   // The page's own listener is untouched; only the transport went away.
   expect(fromMount.length).to.equal(2);
   expect(wire.sent.length).to.equal(1);
+});
+
+// ---------- reading one status line ----------
+
+it('takes an ordinary status line as progress', () => {
+  expect(decode('rewriting the intro')).to.deep.equal({ kind: 'progress', text: 'rewriting the intro' });
+  expect(decode('')).to.deep.equal({ kind: 'progress', text: '' });
+});
+
+// The sentinel is what stops a handler that pipes jq or an HTTP response to
+// stdout from having its tool output adopted as the agent's own words.
+it('leaves a handler’s own JSON alone', () => {
+  expect(decode('{"name":"index.htmlclay","bytes":1204}').kind).to.equal('progress');
+  expect(decode('{"reply":"I rewrote it"}').kind).to.equal('progress');
+});
+
+it('reads a reply, and an appended one', () => {
+  expect(decode('{"redpen":1,"reply":"Cut the second clause."}'))
+    .to.deep.equal({ kind: 'reply', text: 'Cut the second clause.', append: false });
+  expect(decode('  {"redpen":1,"reply":"and the date","append":true}'))
+    .to.deep.equal({ kind: 'reply', text: 'and the date', append: true });
+});
+
+// A line cut at the wire's 4 KB limit keeps its head, and the head is the only
+// thing this can match on — which is the whole reason `redpen` goes first.
+it('knows a reply that did not survive the trip from one that was never a reply', () => {
+  expect(decode('{"redpen":1,"reply":"Cut the seco').kind).to.equal('mangled');
+  expect(decode('{"totally":"different').kind).to.equal('progress');
+});
+
+it('warns rather than going quiet when a reply carries no words', () => {
+  expect(decode('{"redpen":1}').kind).to.equal('broken');
+  expect(decode('{"redpen":1,"reply":""}').kind).to.equal('broken');
+  expect(decode('{"redpen":1,"reply":42}').kind).to.equal('broken');
+});
+
+// ---------- the translator ----------
+
+it('turns status lines into a turn’s progress and its reply', async () => {
+  const wire = fakeWire();
+  window.clay = { wire };
+  review = mount({ key: 'test:translate' });
+  await settled();
+  attached = attach(review);
+
+  tapComment();
+  say('make this shorter');
+  footBtn('done').click();
+  const id = only(wire);
+
+  wire.status(id, 'reading index.htmlclay');
+  wire.status(id, '{"redpen":1,"reply":"Cut the second clause."}');
+  wire.status(id, '{"redpen":1,"reply":" And the date.","append":true}');
+  await wire.finish(id, 'done');
+
+  const noteId = review.json().items.find(i => i.kind === 'comment').id;
+  const [turn] = review.thread.of(noteId);
+  expect(turn.progress).to.deep.equal(['reading index.htmlclay']);
+  expect(turn.reply).to.equal('Cut the second clause. And the date.');
+  expect(turn.state).to.equal('done');
+});
+
+it('keeps a mangled reply and says what happened to it', async () => {
+  const wire = fakeWire();
+  window.clay = { wire };
+  review = mount({ key: 'test:mangled' });
+  await settled();
+  attached = attach(review);
+
+  tapComment();
+  say('make this shorter');
+  footBtn('done').click();
+  const id = only(wire);
+  wire.status(id, '{"redpen":1,"reply":"Cut the seco');
+
+  const noteId = review.json().items.find(i => i.kind === 'comment').id;
+  const [turn] = review.thread.of(noteId);
+  expect(turn.reply).to.equal(undefined);
+  expect(turn.progress).to.deep.equal(['{"redpen":1,"reply":"Cut the seco']);
+  expect(turn.note).to.contain('did not survive');
+});
+
+it('ignores a frame for a request it never sent', async () => {
+  const wire = fakeWire();
+  window.clay = { wire };
+  review = mount({ key: 'test:foreign' });
+  await settled();
+  attached = attach(review);
+
+  tapComment();
+  say('make this shorter');
+  footBtn('done').click();
+  wire.status('someone-elses-request', 'not ours');
+
+  const noteId = review.json().items.find(i => i.kind === 'comment').id;
+  expect(review.thread.of(noteId)[0].progress).to.equal(undefined);
+});
+
+// Turn one has to be byte-identical to what redpen sent before threads existed,
+// or every trace and every handler written against the old shape breaks.
+it('adds nothing to turn one’s payload, and carries the exchanges on turn two', async () => {
+  const wire = fakeWire();
+  window.clay = { wire };
+  review = mount({ key: 'test:turn-payload' });
+  await settled();
+  attached = attach(review);
+
+  tapComment();
+  say('make this shorter');
+  footBtn('done').click();
+  const first = only(wire);
+  expect(wire.sent[0].payload.turn).to.equal(undefined);
+  expect(wire.sent[0].payload.thread).to.equal(undefined);
+
+  wire.status(first, '{"redpen":1,"reply":"Cut the second clause."}');
+  await wire.finish(first, 'done');
+
+  const noteId = review.json().items.find(i => i.kind === 'comment').id;
+  review.thread.send(noteId, 'two sentences, not three');
+
+  const { payload } = wire.sent[1];
+  expect(payload.said).to.equal('two sentences, not three');
+  expect(payload.turn).to.equal(2);
+  expect(payload.thread).to.deep.equal([
+    { you: 'make this shorter', agent: 'Cut the second clause.' },
+    { you: 'two sentences, not three' },
+  ]);
+  // the conversation would otherwise ship twice
+  expect(payload.item.thread).to.equal(undefined);
 });

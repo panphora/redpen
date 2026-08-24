@@ -1,52 +1,7 @@
 (() => {
-  // src/mark.js
-  var CLAY = "no-save no-snapshot no-watch";
-  var BARE = ["no-save", "no-snapshot", "no-watch"];
-  function mark(node) {
-    node.setAttribute("sap-ignore", "");
-    node.setAttribute("clay", CLAY);
-    for (const token of BARE) node.setAttribute(token, "");
-    return node;
-  }
-  function chrome(node) {
-    node.dataset.laUi = "1";
-    return mark(node);
-  }
-
   // src/wire.js
-  var STYLES = `
-  .rprWire { position: fixed; left: 14px; bottom: 14px; z-index: 99995; display: flex; align-items: center; gap: 8px;
-    font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace); font-size: 11.5px; letter-spacing: .06em;
-    max-width: min(420px, calc(100vw - 28px));
-    background: var(--card, #FDFDFC); border: 1px solid var(--line, #DCD8D2); border-radius: 7px; padding: 5px 8px; }
-  .rprWire[hidden] { display: none; }
-  .rprWire .rprWireDot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ink-faint, #8A857E); }
-  .rprWire.working .rprWireDot { background: var(--flag, #e5484d); animation: rprWirePulse 1.1s ease-in-out infinite; }
-  .rprWire.done .rprWireDot { background: #2f9e44; }
-  .rprWire.error .rprWireDot { background: var(--flag, #e5484d); }
-  .rprWire .rprWireText { color: var(--ink, #17110C); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rprWire button { font: inherit; letter-spacing: inherit; color: var(--ink-faint, #8A857E); background: none;
-    border: 0; border-radius: 5px; padding: 2px 6px; cursor: pointer; }
-  .rprWire button:hover { color: var(--ink, #17110C); background: var(--line, #DCD8D2); }
-  @keyframes rprWirePulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
-`;
   var attached = null;
-  var WORKING = /* @__PURE__ */ new Set(["sent", "acked", "landing"]);
-  var CANCELLABLE = /* @__PURE__ */ new Set(["sent", "acked"]);
-  var LABEL = {
-    sent: "sending to the agent",
-    acked: "the agent is working",
-    landing: "waiting for the change",
-    done: "done",
-    cancelled: "cancelled"
-  };
-  function injectStyles() {
-    if (document.getElementById("rprWireStyle")) return;
-    const style = mark(document.createElement("style"));
-    style.id = "rprWireStyle";
-    style.textContent = STYLES;
-    document.head.prepend(style);
-  }
+  var RUNNING = /* @__PURE__ */ new Set(["sent", "acked", "landing"]);
   function nearestKey(el) {
     for (let node = el; node && node.nodeType === 1; node = node.parentElement) {
       const dataId = node.getAttribute("data-id");
@@ -56,16 +11,94 @@
     }
     return null;
   }
-  function payloadFor(item, projection) {
-    const selector = item.anchor && item.anchor.selector;
+  function decode(line) {
+    const raw = String(line ?? "");
+    if (raw.trimStart()[0] !== "{") return { kind: "progress", text: raw };
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      if (/^\s*\{\s*"redpen"\s*:/.test(raw)) return { kind: "mangled", text: raw };
+      return { kind: "progress", text: raw };
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { kind: "progress", text: raw };
+    if (!Object.prototype.hasOwnProperty.call(parsed, "redpen")) return { kind: "progress", text: raw };
+    if (typeof parsed.reply !== "string" || !parsed.reply) return { kind: "broken", text: raw };
+    return { kind: "reply", text: parsed.reply, append: parsed.append === true };
+  }
+  function payloadFor(request) {
+    const item = request.item || null;
+    const projection = request.projection || {};
+    const history = request.history || null;
+    const { thread, ...bare } = item || {};
+    const selector = item && item.anchor && item.anchor.selector;
     const el = selector ? document.querySelector(selector) : null;
     return {
       kind: "comment",
       page: projection.page,
-      said: item.said,
-      item,
-      ...item.target_id ? { target: (projection.targets || {})[item.target_id] || null } : projection.coords ? { coords: projection.coords } : {},
+      said: request.ask,
+      ...request.turn > 1 ? { turn: request.turn } : {},
+      ...history ? {
+        thread: history.pairs,
+        ...history.earlier ? { earlier: history.earlier } : {}
+      } : {},
+      item: item ? bare : null,
+      // The coordinate rule travels with the item, because the item's geometry is
+      // expressed in that rule and reads as fractions of the wrong box without it.
+      ...item && item.target_id ? { target: (projection.targets || {})[item.target_id] || null } : projection.coords ? { coords: projection.coords } : {},
       ...el ? { region: nearestKey(el) } : {}
+    };
+  }
+  function createTransport(wire) {
+    let sink = null;
+    let off = null;
+    const mine = /* @__PURE__ */ new Set();
+    function onFrame(rec, frame) {
+      if (!sink || !mine.has(rec.id)) return;
+      if (RUNNING.has(rec.state)) sink.state(rec.id, rec.state);
+      const line = frame && typeof frame.text === "string" ? frame.text : rec.state === "acked" && rec.text ? rec.text : "";
+      if (!line) return;
+      const said = decode(line);
+      if (said.kind === "reply") return void sink.reply(rec.id, said.text, { append: said.append });
+      if (said.kind === "mangled") {
+        sink.progress(rec.id, said.text);
+        return void sink.note(rec.id, "the agent sent a reply that did not survive the trip");
+      }
+      if (said.kind === "broken") {
+        sink.progress(rec.id, said.text);
+        return void sink.note(rec.id, "the agent marked a reply that carried no words");
+      }
+      sink.progress(rec.id, said.text);
+    }
+    return {
+      label: "agent",
+      attach(s) {
+        sink = s;
+        off = wire.on(onFrame);
+      },
+      detach() {
+        off?.();
+        off = null;
+        sink = null;
+        mine.clear();
+        if (attached && attached.transport === this) attached = null;
+      },
+      // redpen mints the id, because clayjs emits the first frame from inside
+      // send(): a mapping built from the return value would be built too late to
+      // route it.
+      send(request) {
+        const handle = wire.send(payloadFor(request), { id: request.id, text: request.ask });
+        if (!handle || !handle.id) return null;
+        mine.add(handle.id);
+        handle.done.then((final) => {
+          mine.delete(handle.id);
+          sink?.state(handle.id, final.state, final.error);
+        });
+        return { id: handle.id };
+      },
+      // clayjs refuses a cancel that arrived too late, so the rule lives there
+      // rather than being restated here where the two could quietly disagree.
+      cancel: (id) => wire.cancel(id)
     };
   }
   function attach(review, opts = {}) {
@@ -75,61 +108,17 @@
       return null;
     }
     if (attached) {
-      console.warn("[redpen] the wire is already attached to this page");
+      if (attached.review !== review) console.warn("[redpen] the wire is already attached to this page");
       return attached;
     }
-    injectStyles();
-    const pill = chrome(document.createElement("div"));
-    pill.className = "rprWire";
-    pill.hidden = true;
-    const dot = document.createElement("span");
-    dot.className = "rprWireDot";
-    const text = document.createElement("span");
-    text.className = "rprWireText";
-    const cancelBtn = document.createElement("button");
-    cancelBtn.textContent = "cancel";
-    pill.append(dot, text, cancelBtn);
-    document.body.appendChild(pill);
-    let showing = null;
-    let clearTimer = null;
-    function render(rec) {
-      if (!rec) return;
-      showing = rec;
-      clearTimeout(clearTimer);
-      const working = WORKING.has(rec.state);
-      pill.hidden = false;
-      pill.classList.toggle("working", working);
-      pill.classList.toggle("done", rec.state === "done");
-      pill.classList.toggle("error", rec.state === "error");
-      text.textContent = rec.state === "error" ? rec.error || "the agent failed" : CANCELLABLE.has(rec.state) && rec.text || LABEL[rec.state] || rec.state;
-      cancelBtn.hidden = !CANCELLABLE.has(rec.state);
-      if (rec.state === "done" || rec.state === "cancelled") {
-        clearTimer = setTimeout(() => {
-          pill.hidden = true;
-          showing = null;
-        }, 2500);
-      }
-    }
-    const off = wire.on((rec) => {
-      if (!showing || rec.id === showing.id || !WORKING.has(showing.state)) render(rec);
-    });
-    cancelBtn.addEventListener("click", () => {
-      if (showing && CANCELLABLE.has(showing.state)) wire.cancel(showing.id);
-    });
-    const send = (item, projection) => {
-      const handle = wire.send(payloadFor(item, projection), { text: item.said });
-      render({ id: handle.id, state: "sent", text: "", error: null });
-      return handle;
-    };
-    const offComment = review.onComment(typeof opts.onComment === "function" ? opts.onComment : send);
+    const transport = opts.transport || createTransport(wire);
+    const disconnect = review.thread.connect(transport);
     attached = {
-      send,
+      review,
+      transport,
+      send: (request) => transport.send(request),
       detach() {
-        off();
-        offComment();
-        clearTimeout(clearTimer);
-        pill.remove();
-        document.getElementById("rprWireStyle")?.remove();
+        disconnect();
         attached = null;
       }
     };

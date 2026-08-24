@@ -127,13 +127,14 @@ pen.setMode('note');
 pen.show('p19');   // the one call on panel switch
 ```
 
-Events: `change` `{action, item?}` · `item:add` `{item}` · `mode` `{mode}` ·
-`target` `{target}` · `layout` (markers were re-placed).
+Events: `change` `{action, item?}` · `item:add` `{item}` · `item:click` `{item}` ·
+`mode` `{mode}` · `target` `{target}` · `layout` (markers were re-placed).
 
 Methods: `setMode(mode)` `mode()` `items(targetId?)` `strokes(targetId?)`
-`setNote(id, text)` `remove(id)` `undoStroke(targetId?)` `clear(targetId?)`
+`setNote(id, text)` `updateNote(id, fn)` `updateNotes(fn)` `remove(id)`
+`undoStroke(targetId?)` `clear(targetId?)`
 `clearNotes(targetId?)` `clearStrokes(targetId?)` `data(targetId?)` `layout()`
-`destroy()` · `addTarget({id, selector|el, basis})` `removeTarget(id)`
+`loaded()` `destroy()` · `addTarget({id, selector|el, basis})` `removeTarget(id)`
 `targets()` `show(targetId|null)` `target()`.
 
 The engine binds **no** global keyboard and **no** clipboard. It exposes
@@ -214,6 +215,145 @@ pen.review()        // the flat export, answers and comments in one list
 on purpose: `data()` has live consumers and projects notes through a fixed field
 whitelist, so anything new added there would be silently dropped.
 
+## The thread
+
+A comment can hold a conversation. You say something, an agent answers **in words**
+and edits the file, and you answer that. The words live on the note; the edit does
+not, and never touches redpen: it arrives as an ordinary external change to the
+file, through live sync. A finished request and a visible change are two different
+events, which is why the thread reports both.
+
+```js
+const review = RedpenReview.mount({});
+RedpenWire.attach(review);   // the clay.wire transport; returns null with no wire
+```
+
+`attach` needs `clay.wire`. Without it every comment still lands in the clipboard
+through COPY JSON, which is the ordinary shape of a review page with no agent.
+
+### The seam
+
+`review.js` owns every piece of state. The transport owns the live handles and
+the translation in both directions, and creates **no DOM at all**.
+
+```js
+review.thread.connect(transport)     // → disconnect()
+review.thread.send(noteId, text)     // → the turn, or null
+review.thread.open(noteId)           // open that comment's popover
+review.thread.of(noteId)             // a frozen copy, for hosts and tests
+review.thread.resolve(noteId, on)    // retire a comment, or bring it back
+review.thread.resume(noteId, turnId) // send a turn a reload left queued
+review.thread.connected() / .busy()
+```
+
+```js
+// what a transport implements
+{ send(request) -> { id } | null, cancel(id) -> boolean, label, attach?(sink), detach?() }
+
+// what review.js hands it
+{ state(id, state, error), progress(id, line), reply(id, text, { append }), note(id, line) }
+```
+
+`note` is the transport's own remark about an exchange, which is how a reply that
+arrived broken becomes visible without review.js knowing what a status line is.
+
+Two rules the seam depends on. **redpen mints the request id**, because clayjs
+emits the first frame from inside `send()` and a mapping built from the return
+value is built too late to route it. And **the turn is written to the store before
+`transport.send` is called**, for the same reason.
+
+### One request at a time
+
+`wire serve` runs a process per request and allows eight, so two in flight means
+two programs reading, editing and writing one file, and the second write silently
+loses the first one's change. A send while something is running is stored as a
+`queued` turn and drains when the wire frees up.
+
+A queued turn drains automatically **while the page is live, but not after a
+reload**: nobody then knows whether the earlier request's edit landed, and sending
+automatically could ask for the same change twice. It renders with a send button
+and waits.
+
+### Sending is asymmetric, on purpose
+
+The **first** message sends on leaving the popover, which is today's behaviour and
+the flow the whole tool is built around: tap, type, tap the next thing. Once a
+thread exists the comment text is frozen and becomes the thread's opening line;
+**follow-ups are explicit**, on `send ›` or ⌘↵, so pressing Escape to stop reading
+a reply cannot send anything.
+
+### Reading a reply
+
+A reply that arrives while the popover is shut reaches you through three surfaces
+of increasing durability: the pill for 2.5s, a ring on the marker, and the stored
+`unread` flag that survives a reload. Opening the thread is what clears it.
+
+### Resolve
+
+`resolve` in the popover's top row retires a comment: it leaves the page entirely,
+the bar grows an `N resolved` button, and that list offers `reopen` and `discard`.
+Resolved means *you are done with this*, not that the agent succeeded — a resolved
+comment still exports, carrying `resolved` and its thread, and `review()`'s summary
+counts it.
+
+Resolving does **not** cancel a running request. Cancel is refused once a request
+reaches `landing`, so "resolve cancels" is a promise redpen cannot keep, and the
+agent is mid-edit of your file either way. The turn keeps running, and a reply
+arriving afterwards brings the comment back onto the page.
+
+### The reply line
+
+One line on stdout that parses as a JSON object carrying a `redpen` key:
+
+```bash
+echo "rewriting the intro"
+REPLY=$(node rewrite.js "$HTMLCLAY_WIRE_FILE")
+printf '{"redpen":1,"reply":%s}\n' "$(jq -Rs . <<<"$REPLY")"
+```
+
+| field | meaning |
+|---|---|
+| `redpen` | the marker, value `1`. Required, and conventionally first |
+| `reply` | the text. A blank line starts a paragraph |
+| `append` | optional `true`: concatenate onto the reply so far instead of replacing it |
+
+Every other line is progress. The sentinel is what stops a handler that pipes `jq`
+or an HTTP response to stdout from having its tool output adopted as the agent's
+words. `redpen` goes first because a line cut at the wire's 4 KB limit keeps its
+head, and that head is the only thing the mangled-reply rule can match on.
+
+Full contract, including the byte budget and the print-before-exit rule:
+`htmlclay/docs/wire.md`.
+
+### The follow-up payload
+
+`said` is **always the newest message**, so a handler written before threads
+existed reads `payload.said` and gets the current instruction. On turn one the
+payload is byte-identical to what redpen sent before threads: `turn` and `thread`
+appear only from the second exchange onwards.
+
+```json
+{
+  "kind": "comment",
+  "page": "index.htmlclay",
+  "said": "two sentences, not three",
+  "turn": 2,
+  "thread": [
+    { "you": "make this shorter", "agent": "Cut the second clause." },
+    { "you": "two sentences, not three" }
+  ],
+  "item": { "…": "the projection, with thread stripped out" },
+  "region": { "key": "s1", "selector": "#s1", "tag": "section" }
+}
+```
+
+`{you, agent}` pairs, because the pairing is the information and it reads
+correctly pasted into a prompt with no legend. A failed exchange carries `failed`
+instead of `agent`. Bounds, on the payload only: the last 8 exchanges with an
+`earlier` count, each string at 2000 characters except the newest `you`, which is
+never cut. Progress lines never travel; they are the agent's own output coming
+back at it.
+
 ## Host integration
 
 Four things a host page needs and cannot infer from the API.
@@ -232,6 +372,7 @@ review.next() / review.prev()   // step through unanswered questions
 review.point(on)   // toggle volunteer mode (plain note capture)
 review.copy()      // copy the whole review to the clipboard
 review.json()      // the same payload, as an object
+review.thread      // the conversation on a comment; see The thread
 review.destroy()
 ```
 
@@ -293,11 +434,13 @@ draw-surface.js  ink canvas + lazy brush + smoothing + RDP + SVG path export
 ink-layer.js     finished strokes as SVG marks in one overlay <svg> per viewbox target
 engine.js        Redpen.create → RedpenEngine extends EventTarget
 ui.js            default adapter: hub bar + #laNotes list + global cmd+Z
-review.js        review adapter: request chips + popover + answer/comment copy
+review.js        review adapter: request chips + popover + thread + answer/comment copy
+wire.js          transport: request → clay.wire payload, wire frames → thread calls
 standalone.js    composes engine + ui into one page-wide instance
 index.js         engine + ui     → dist/redpen.js
 index-core.js    engine alone    → dist/redpen-core.js
 index-review.js  engine + review → dist/redpen-review.js
+index-wire.js    the transport   → dist/redpen-wire.js
 notes.js / draw.js / feedback-hub.js
                  import-and-go entry points kept for the scene pages that symlink them
 ```
@@ -316,6 +459,35 @@ One blob per instance key, `redpen:<key>`:
 ```
 
 Notes and strokes share one counter, so an agent can be told "fix stroke 4 on p12".
+
+A note carries the conversation too: `thread` (one entry per exchange), `resolved`
+(an ISO string, absent when open), `unread`, and `draft` (an unsent follow-up).
+**The version stays 3.** That is not tidiness: `adoptBlob` refuses any other
+version outright, the store then comes up empty *and writable*, and the first write
+commits an empty blob over a full one — so a bump is the most reliable way to
+destroy every stored note for anyone still running an older vendored bundle. Extra
+fields round-trip verbatim in both directions already, which is what makes the
+thread need no bump. `data()`'s note whitelist exports `thread` and `resolved`, and
+deliberately not `unread` or `draft`: one is local read-state and the other is
+unsent scratch.
+
+```json
+{ "id": 16, "text": "make this shorter", "kind": "element",
+  "thread": [ { "id": "t1", "request": "rp-9c4a-16-t1", "ask": "make this shorter",
+                "at": "2026-08-23T18:04:11.021Z", "state": "done",
+                "reply": "Cut the second clause.", "repliedAt": "…", "endedAt": "…",
+                "progress": ["reading the file"] } ] }
+```
+
+`state` is `queued | sent | acked | landing | done | error | cancelled | unknown`.
+The middle six are the wire's; `queued` and `unknown` are redpen's, the second
+meaning the page was closed while the request was still running. `ask` is frozen at
+send time and never rewritten, so a reworded comment cannot silently claim the
+agent was answering something it never saw. Caps, so a chatty handler cannot grow a
+blob that is rewritten on every keystroke: a progress line stores at 400
+characters, a turn keeps its last 50 with a `progressDropped` count, and an
+assembled reply caps at 32 KB.
+
 Legacy `la-notes:<path>` / `la-draw:<path>` fold into the `page` target on first
 load; the old keys are left in place. Old draw pixels keep a `px` flag until the
 first layout with a real box to normalize against, so nothing is silently discarded.

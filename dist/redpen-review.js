@@ -479,8 +479,18 @@
   .laBox { position: absolute; border: 2px solid #e5484d; background: rgba(229, 72, 77, .12); box-sizing: border-box; }
   .laBox.el { background: rgba(229, 72, 77, .06); }
   .laBox.laPoint { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: #e5484d; border-color: #FDFDFC; }
-  .laBox .tag { position: absolute; top: -10px; left: -10px; background: #e5484d; color: #fff;
-    font: 700 11px/16px -apple-system, sans-serif; text-align: center; min-width: 16px; height: 16px; border-radius: 8px; padding: 0 3px; }
+  /* The tag carries no number. A marker's job is to say "something was said
+     here", and the id it used to show was only ever useful to whoever was
+     reading the export, which still carries it. Losing the digits also lets the
+     tag be the small round click target that reopens the comment. */
+  .laBox .tag { position: absolute; top: -7px; left: -7px; width: 13px; height: 13px; box-sizing: border-box;
+    background: #e5484d; border: 2px solid #FDFDFC; border-radius: 50%;
+    pointer-events: auto; cursor: pointer; }
+  /* A point marker is already a dot, so it is its own click target rather than
+     wearing a second one. */
+  .laBox.laPoint { pointer-events: auto; cursor: pointer; }
+  .laBox .tag:hover, .laBox.laPoint:hover { background: #17110C; }
+  .laBox .tag.unread, .laBox.laPoint.unread { box-shadow: 0 0 0 3px rgba(229, 72, 77, .4); }
   .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
   .laOverlay { position: fixed; inset: 0; z-index: 99992; display: none; touch-action: none; }
   .laReqs { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99991; pointer-events: none; }
@@ -508,11 +518,23 @@
     if (id) el2.id = id;
     return chrome(el2);
   }
-  function createNoteSurface({ mount: mount2, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick }) {
+  function markerTitle(note) {
+    const said = (note.text || "").trim();
+    if (!said) return "an empty comment";
+    return said.length > 72 ? said.slice(0, 71) + "\u2026" : said;
+  }
+  function createNoteSurface({ mount: mount2, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick, onNoteClick }) {
     const describe2 = identify || describe;
     injectSurfaceStyles();
     const markers = chrome2(document.createElement("div"), "laMarkers", "laMarkers");
     mount2.appendChild(markers);
+    markers.addEventListener("click", (e) => {
+      const hit = e.target.closest("[data-la-note]");
+      if (!hit) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onNoteClick?.(Number(hit.dataset.laNote));
+    });
     const reqs = chrome2(document.createElement("div"), "laReqs", "laReqs");
     mount2.appendChild(reqs);
     const overlay = chrome2(document.createElement("div"), "laOverlay", "laOverlay");
@@ -570,13 +592,15 @@
         const show = visible ? visible(id) : true;
         if (!show) continue;
         for (const note of g.notes) {
+          if (note.resolved) continue;
           if (note.kind === "point" && note.point) {
             const p = screenPoint(t, note);
             if (!p) continue;
             const dot = document.createElement("div");
-            dot.className = "laBox laPoint";
+            dot.className = "laBox laPoint" + (note.unread ? " unread" : "");
             dot.dataset.laTarget = id;
-            dot.innerHTML = `<span class="tag">${note.id}</span>`;
+            dot.dataset.laNote = note.id;
+            dot.title = markerTitle(note);
             placePoint(dot, p.x, p.y);
             markers.appendChild(dot);
             continue;
@@ -586,7 +610,11 @@
           const box = document.createElement("div");
           box.className = "laBox" + (note.kind === "element" ? " el" : "");
           box.dataset.laTarget = id;
-          box.innerHTML = `<span class="tag">${note.id}</span>`;
+          box.dataset.laNote = note.id;
+          const tag = document.createElement("span");
+          tag.className = "tag" + (note.unread ? " unread" : "");
+          tag.title = markerTitle(note);
+          box.appendChild(tag);
           place(box, r);
           markers.appendChild(box);
         }
@@ -1345,6 +1373,13 @@
         const i = requests.findIndex((r) => r.key === key2);
         if (i >= 0) emit("request:click", { request: requestView(requests[i], i) });
       },
+      // The way back into a comment that already exists. Mirrors request:click,
+      // and it is the whole reason marker tags take clicks: without it a comment's
+      // popover opens once, while it is being written, and never again.
+      onNoteClick: (id) => {
+        const hit = findNote(id);
+        if (hit) emit("item:click", { item: { ...hit.item, target_id: hit.targetId } });
+      },
       addNote: (targetId, fields, gesture) => {
         const g = store.group(targetId);
         const t = targets.get(targetId);
@@ -1444,7 +1479,14 @@
             ...n.rect ? { rect: n.rect } : {},
             ...n.elements ? { elements: n.elements } : {},
             ...n.truncated ? { truncated: n.truncated } : {},
-            ...n.context ? { context: n.context } : {}
+            ...n.context ? { context: n.context } : {},
+            // The conversation and whether it was retired are feedback, so they
+            // export. This list is a whitelist and review() reads notes through
+            // it, so a field missing here is missing from Copy JSON as well, however
+            // faithfully the store round-trips it. `unread` and `draft` stay out:
+            // one is local read-state and the other is unsent scratch.
+            ...n.thread ? { thread: n.thread } : {},
+            ...n.resolved ? { resolved: n.resolved } : {}
           })),
           strokes: g.strokes.map((s) => {
             const k = s.px ? { x: 1, y: 1 } : scale;
@@ -1500,6 +1542,7 @@
         answered: asked.filter((v) => v.answered).length,
         unanswered: asked.filter((v) => !v.answered).length,
         orphaned: orphans().length,
+        resolved: items.filter((i) => i.kind === "comment" && i.resolved).length,
         ...coords ? { coords } : {},
         ...Object.keys(bases).length ? { targets: bases } : {},
         items
@@ -1565,6 +1608,31 @@
         hit.item.text = text;
         store.save();
         emit("change", { action: "note", item: hit.item });
+      },
+      // The STORED note, handed to a mutator rather than returned. `items()` gives
+      // out shallow copies, so a host that sets a field on one changes nothing the
+      // store will ever write, and the nested objects it does share by reference
+      // make that failure look like it works until it does not. Going through here
+      // also means the save and the event cannot be forgotten.
+      updateNote(id, fn) {
+        const hit = findNote(id);
+        if (!hit) return false;
+        fn(hit.item);
+        store.save();
+        emit("change", { action: "note", item: hit.item });
+        return true;
+      },
+      // Every stored note, for a sweep that must not cost one write per note. The
+      // mutator returns true when it changed something, and a sweep that changed
+      // nothing writes nothing and emits nothing, so an ordinary page load does
+      // not rewrite the whole blob for no reason.
+      updateNotes(fn) {
+        let changed = false;
+        for (const [, g] of store.state.targets) for (const n of g.notes) if (fn(n)) changed = true;
+        if (!changed) return false;
+        store.save();
+        emit("change", { action: "notes" });
+        return true;
       },
       remove(id) {
         const hit = findNote(id);
@@ -1659,6 +1727,11 @@
       data,
       review,
       layout: repaint,
+      // true once the stored blob has been read. Nothing may be WRITTEN before
+      // this: the store starts empty and a write from that window commits an empty
+      // blob over the real one. Gestures are already held off by applyMode; a host
+      // that writes notes from its own code has to ask.
+      loaded: () => loaded,
       // true once a write has failed: the notes are memory-only from here
       saveFailed: () => saveFailed,
       destroy() {
@@ -1742,6 +1815,46 @@
   .rprPop .rprOrphan .q { color: var(--ink-faint, #8A857E); font-size: 11.5px; }
   .rprPop .rprOrphan + .rprOrphan { border-top: 1px solid var(--line, #DCD8D2); padding-top: 10px; }
 
+  /* The thread. Your words are muted and the reply is full ink, because the
+     reply is what you opened this to read. */
+  .rprPop .rprThread { max-height: 46vh; overflow-y: auto; margin: 0 0 9px; }
+  .rprPop .rprTurn + .rprTurn { border-top: 1px solid var(--line, #DCD8D2); margin-top: 10px; padding-top: 10px; }
+  .rprPop .rprWho { display: flex; align-items: baseline; gap: 8px; margin: 0 0 3px;
+    font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint, #8A857E); }
+  .rprPop .rprWhen { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .rprPop .rprSaid, .rprPop .rprReply, .rprPop .rprMangled { margin: 0 0 6px; white-space: pre-wrap; }
+  .rprPop .rprSaid { color: var(--ink-faint, #8A857E); }
+  .rprPop .rprReply { color: var(--ink, #17110C); }
+  .rprPop .rprMangled { color: var(--flag, #e5484d); }
+  .rprPop .rprTrail { margin: 0 0 6px; font-size: 11.5px; color: var(--ink-faint, #8A857E); }
+  .rprPop .rprTrail summary { cursor: pointer; }
+  .rprPop .rprTrail p { margin: 3px 0 0 12px; white-space: pre-wrap; }
+  .rprPop .rprTurnState { display: flex; align-items: center; gap: 7px;
+    font-size: 11.5px; color: var(--ink-faint, #8A857E); }
+  .rprPop .rprNow { margin: 2px 0 0 14px; font-size: 11.5px; color: var(--ink-faint, #8A857E); }
+  .rprPop .rprTurnState button { font: inherit; color: var(--ink-faint, #8A857E); background: none; border: 0;
+    border-radius: 5px; padding: 2px 6px; margin-left: auto; cursor: pointer; }
+  .rprPop .rprTurnState button:hover { color: var(--ink, #17110C); background: var(--line, #DCD8D2); }
+
+  /* The pill. One dot class, shared with the thread's state line, so a colour
+     never means one thing in the corner and another in the popover. */
+  .rprDot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none;
+    background: var(--ink-faint, #8A857E); }
+  .rprDot.working { background: var(--flag, #e5484d); animation: rprWirePulse 1.1s ease-in-out infinite; }
+  .rprDot.done { background: #2f9e44; }
+  .rprDot.error { background: var(--flag, #e5484d); }
+  @keyframes rprWirePulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+
+  .rprWire { position: fixed; left: 14px; bottom: 14px; z-index: 99995; display: flex; align-items: center; gap: 8px;
+    max-width: min(420px, calc(100vw - 28px)); cursor: pointer;
+    font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace); font-size: 11.5px; letter-spacing: .06em;
+    background: var(--card, #FDFDFC); border: 1px solid var(--line, #DCD8D2); border-radius: 7px; padding: 5px 8px; }
+  .rprWire[hidden] { display: none; }
+  .rprWire .rprWireText { color: var(--ink, #17110C); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rprWire button { font: inherit; letter-spacing: inherit; color: var(--ink-faint, #8A857E); background: none;
+    border: 0; border-radius: 5px; padding: 2px 6px; cursor: pointer; }
+  .rprWire button:hover { color: var(--ink, #17110C); background: var(--line, #DCD8D2); }
+
   .rprTip { position: fixed; z-index: 99997; max-width: 320px; pointer-events: none;
     font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace); font-size: 11.5px; line-height: 1.45;
     color: var(--ink, #17110C); background: var(--card, #FDFDFC); border: 1px solid var(--line, #DCD8D2);
@@ -1811,9 +1924,10 @@
     const count = el("span", "rprCount", "0/0");
     const nextBtn = el("button", "rprStep", "\u203A");
     const orphanBtn = el("button", "rprWarn", "");
+    const resolvedBtn = el("button", null, "");
     const pointBtn = el("button", null, "point");
     const copyBtn = el("button", null, "copy");
-    bar.append(prevBtn, count, nextBtn, orphanBtn, pointBtn, copyBtn);
+    bar.append(prevBtn, count, nextBtn, orphanBtn, resolvedBtn, pointBtn, copyBtn);
     document.body.appendChild(bar);
     const tip = chrome(el("div", "rprTip"));
     tip.hidden = true;
@@ -1846,14 +1960,18 @@
       const orphaned = pen.orphans();
       orphanBtn.hidden = !orphaned.length;
       orphanBtn.textContent = orphaned.length + " orphaned";
+      const retired = pen.items().filter((n) => n.resolved).length;
+      resolvedBtn.hidden = !retired;
+      resolvedBtn.textContent = retired + " resolved";
       pointBtn.classList.toggle("on", pen.mode() === "note");
     }
     const pop = chrome(el("div", "rprPop"));
     pop.hidden = true;
     const eyebrow = el("span", "rprEyebrow");
+    const resolveBtn = el("button", "rprX", "resolve");
     const closeBtn = el("button", "rprX", "\xD7");
     const top = el("div", "rprTop");
-    top.append(eyebrow, closeBtn);
+    top.append(eyebrow, resolveBtn, closeBtn);
     const was = el("div", "rprWas");
     const wasLabel = el("b", null, "answered when the question read");
     const wasText = el("span");
@@ -1863,13 +1981,14 @@
     const field = el("textarea");
     field.placeholder = "your answer";
     const orphanList = el("div", "rprScroll");
+    const threadBox = el("div", "rprThread");
     const foot = el("div", "rprFoot");
     const leftBtn = el("button", null, "\u2039 prev");
     const spacer = el("span", "rprSpacer");
     const hint = el("span", "rprHint", "\u2318\u21B5 next");
     const rightBtn = el("button", null, "next \u203A");
     foot.append(leftBtn, spacer, hint, rightBtn);
-    pop.append(top, was, question, orphanList, field, foot);
+    pop.append(top, was, question, orphanList, threadBox, field, foot);
     document.body.appendChild(pop);
     let open = null;
     function place(anchor) {
@@ -1893,10 +2012,10 @@
       else atBar();
     }
     function leaveOpen() {
-      const finished = open && open.kind === "comment" ? open.id : null;
+      const at = open && open.kind === "comment" ? open : null;
       flushAnswer();
       open = null;
-      if (finished) announce(finished);
+      if (at && shouldAnnounce(at)) announce(at.id);
     }
     function close() {
       leaveOpen();
@@ -1905,8 +2024,14 @@
     }
     const commentListeners = /* @__PURE__ */ new Set();
     if (typeof opts.onComment === "function") commentListeners.add(opts.onComment);
+    function shouldAnnounce(at) {
+      const note = pen.items().find((n) => n.id === at.id);
+      if (!note) return false;
+      if (note.thread && note.thread.length) return false;
+      return note.text !== at.textAtOpen;
+    }
     function announce(id) {
-      if (!commentListeners.size) return;
+      if (!commentListeners.size && !transport) return;
       const review = pen.review();
       const item = review.items.find((i) => i.kind === "comment" && i.id === id);
       if (!item || !item.said || !item.said.trim()) return;
@@ -1917,6 +2042,410 @@
           console.warn("[review] onComment failed", err);
         }
       }
+      sendTurn(id, item.said);
+    }
+    const CAP = { line: 400, lines: 50, reply: 32 * 1024, say: 2e3, pairs: 8, history: 16 * 1024 };
+    const RUNNING = /* @__PURE__ */ new Set(["sent", "acked", "landing"]);
+    const UNFINISHED = /* @__PURE__ */ new Set(["queued", "sent", "acked", "landing"]);
+    const token = Math.random().toString(36).slice(2, 6);
+    let transport = null;
+    let inflight = null;
+    const byRequest = /* @__PURE__ */ new Map();
+    const now = () => (/* @__PURE__ */ new Date()).toISOString();
+    const cut = (s, n) => s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
+    function noteById(id) {
+      return pen.items().find((n) => n.id === id) || null;
+    }
+    function withTurn(requestId, fn) {
+      const at = byRequest.get(requestId);
+      if (!at) return false;
+      let touched = false;
+      pen.updateNote(at.noteId, (note) => {
+        const turn = (note.thread || []).find((t) => t.id === at.turnId);
+        if (!turn) return;
+        touched = true;
+        fn(turn, note);
+      });
+      if (touched) showTurn(at.noteId, at.turnId);
+      return touched;
+    }
+    function settleTurn(requestId, state, error) {
+      const ok = withTurn(requestId, (turn) => {
+        turn.state = state;
+        turn.endedAt = now();
+        if (error) turn.error = cut(String(error), CAP.line);
+      });
+      byRequest.delete(requestId);
+      if (inflight === requestId) inflight = null;
+      drain();
+      return ok;
+    }
+    const sink = {
+      state(requestId, state, error) {
+        if (!RUNNING.has(state)) return settleTurn(requestId, state, error);
+        return withTurn(requestId, (turn) => {
+          turn.state = state;
+        });
+      },
+      progress(requestId, line) {
+        const said = cut(String(line ?? "").trim(), CAP.line);
+        if (!said) return false;
+        return withTurn(requestId, (turn) => {
+          const trail = turn.progress || (turn.progress = []);
+          trail.push(said);
+          if (trail.length > CAP.lines) {
+            turn.progressDropped = (turn.progressDropped || 0) + (trail.length - CAP.lines);
+            trail.splice(0, trail.length - CAP.lines);
+          }
+        });
+      },
+      reply(requestId, text, opts2 = {}) {
+        const said = String(text ?? "");
+        if (!said) return false;
+        let rang = false;
+        const ok = withTurn(requestId, (turn, note) => {
+          turn.reply = cut(opts2.append && turn.reply ? turn.reply + said : said, CAP.reply);
+          turn.repliedAt = now();
+          if (open && open.kind === "comment" && open.id === note.id) return;
+          rang = !note.unread;
+          note.unread = true;
+        });
+        if (rang) pen.layout();
+        return ok;
+      },
+      // The transport's own remark about an exchange, which is how a mangled reply
+      // line becomes visible without review.js knowing what a status line is.
+      note(requestId, line) {
+        const said = cut(String(line ?? "").trim(), CAP.line);
+        if (!said) return false;
+        return withTurn(requestId, (turn) => {
+          turn.note = said;
+        });
+      }
+    };
+    function historyFor(thread2) {
+      if (!thread2 || thread2.length < 2) return null;
+      const pairs = thread2.map((t, i) => {
+        const last = i === thread2.length - 1;
+        const you = last ? t.ask : cut(t.ask, CAP.say);
+        if (t.reply) return { you, agent: cut(t.reply, CAP.say) };
+        if (UNFINISHED.has(t.state)) return { you };
+        return { you, failed: t.error || "this one did not finish" };
+      });
+      let earlier = 0;
+      while (pairs.length > CAP.pairs || pairs.length > 1 && JSON.stringify(pairs).length > CAP.history) {
+        pairs.shift();
+        earlier++;
+      }
+      return { pairs, earlier };
+    }
+    function sendTurn(noteId, said) {
+      if (!transport) return null;
+      if (!pen.loaded()) return null;
+      const text = String(said ?? "");
+      if (!text.trim()) return null;
+      const note = noteById(noteId);
+      if (!note) return null;
+      const turnId = "t" + ((note.thread ? note.thread.length : 0) + 1);
+      const queued = !!inflight;
+      const turn = {
+        id: turnId,
+        request: `rp-${token}-${noteId}-${turnId}`,
+        // Frozen at send time and never rewritten, so a reworded comment cannot
+        // silently claim the agent was answering something it never saw. A stored
+        // answer's question follows the same rule for the same reason.
+        ask: text,
+        at: now(),
+        state: queued ? "queued" : "sent"
+      };
+      let stored = null;
+      pen.updateNote(noteId, (n) => {
+        stored = n.thread || (n.thread = []);
+        stored.push(turn);
+        delete n.draft;
+        delete n.resolved;
+      });
+      if (!stored) return null;
+      if (queued) showTurn(noteId, turnId);
+      else dispatch(noteId, turnId);
+      return turn;
+    }
+    function dispatch(noteId, turnId) {
+      const note = noteById(noteId);
+      const thread2 = note && note.thread || [];
+      const at = thread2.findIndex((t) => t.id === turnId);
+      if (at < 0) return;
+      const requestId = thread2[at].request;
+      byRequest.set(requestId, { noteId, turnId });
+      inflight = requestId;
+      pen.updateNote(noteId, (n) => {
+        for (const t of n.thread || []) if (t.id === turnId) {
+          t.state = "sent";
+          delete t.stalled;
+        }
+      });
+      showTurn(noteId, turnId);
+      const projection = pen.review();
+      const history = historyFor(thread2.slice(0, at + 1));
+      const ok = transport.send({
+        id: requestId,
+        ask: thread2[at].ask,
+        turn: at + 1,
+        item: projection.items.find((i) => i.kind === "comment" && i.id === noteId) || null,
+        projection,
+        ...history ? { history } : {}
+      });
+      if (!ok) settleTurn(requestId, "error", "this could not be sent");
+    }
+    function drain() {
+      if (!transport || inflight) return;
+      let pick = null;
+      for (const note of pen.items()) {
+        for (const turn of note.thread || []) {
+          if (turn.state !== "queued") continue;
+          if (!pick || turn.at < pick.at) pick = { noteId: note.id, turnId: turn.id, at: turn.at };
+        }
+      }
+      if (pick) dispatch(pick.noteId, pick.turnId);
+    }
+    function sweepUnfinished() {
+      pen.updateNotes((note) => {
+        if (!note.thread) return false;
+        let changed = false;
+        for (const turn of note.thread) {
+          if (turn.state === "queued" && !turn.stalled) {
+            turn.stalled = true;
+            changed = true;
+            continue;
+          }
+          if (!RUNNING.has(turn.state)) continue;
+          turn.state = "unknown";
+          turn.endedAt = now();
+          changed = true;
+        }
+        return changed;
+      });
+    }
+    function disconnect() {
+      if (!transport) return;
+      const t = transport;
+      transport = null;
+      inflight = null;
+      byRequest.clear();
+      dropPill();
+      t.detach?.();
+    }
+    const thread = {
+      // Returns its own disconnect, and refuses a second transport rather than
+      // replacing the first: two would each believe they own `inflight`, and the
+      // one-request rule is the only thing keeping two agents off one file.
+      connect(t) {
+        if (!t || typeof t.send !== "function") return () => {
+        };
+        if (transport) {
+          console.warn("[review] a transport is already connected");
+          return () => {
+          };
+        }
+        transport = t;
+        buildPill();
+        t.attach?.(sink);
+        return () => {
+          if (transport === t) disconnect();
+        };
+      },
+      // The one queued turn a reload left behind. Live queueing drains itself;
+      // this is the hand on the button that the reload rule deliberately removed.
+      resume(noteId, turnId) {
+        if (!transport || inflight) return false;
+        const note = noteById(noteId);
+        const turn = (note && note.thread || []).find((t) => t.id === turnId);
+        if (!turn || turn.state !== "queued") return false;
+        dispatch(noteId, turnId);
+        return true;
+      },
+      // Done with this comment, which is not the same as the agent succeeding. A
+      // running request is left running: cancel is refused once a request reaches
+      // landing, so "resolve cancels" is a promise redpen cannot keep, and the
+      // agent is mid-edit of your file either way.
+      resolve(noteId, on = true) {
+        const ok = pen.updateNote(noteId, (n) => {
+          if (on) n.resolved = now();
+          else delete n.resolved;
+        });
+        if (ok) pen.layout();
+        return ok;
+      },
+      send: sendTurn,
+      open(noteId) {
+        const note = noteById(noteId);
+        if (note) openComment(note);
+      },
+      // A deep copy, because items() shares a note's nested objects by reference:
+      // a host that edited what it was given would change what the store writes
+      // without ever saving, which looks like it works until it does not.
+      of(noteId) {
+        const note = noteById(noteId);
+        if (!note || !note.thread) return [];
+        return Object.freeze(JSON.parse(JSON.stringify(note.thread)).map(Object.freeze));
+      },
+      connected: () => !!transport,
+      busy: () => !!inflight
+    };
+    const CANCELLABLE = /* @__PURE__ */ new Set(["sent", "acked"]);
+    const TURN_LABEL = {
+      queued: "waiting for the wire",
+      sent: "sending to the agent",
+      acked: "the agent is working",
+      landing: "waiting for the change",
+      error: "the agent failed",
+      // `wire serve` signals rather than kills, and lets a handler that is
+      // mid-write finish, so the file may still change after this.
+      cancelled: "the agent was asked to stop",
+      unknown: "this was still running when the page was closed"
+    };
+    function turnLine(turn) {
+      if (turn.state === "error") return turn.error || TURN_LABEL.error;
+      if (turn.state === "landing" && turn.reply) return "answered, waiting for the change";
+      if (turn.state === "done") return turn.reply ? "" : "finished with nothing said, the change is on the page";
+      return TURN_LABEL[turn.state] || turn.state;
+    }
+    function dotClass(state) {
+      if (RUNNING.has(state)) return "working";
+      if (state === "done") return "done";
+      if (state === "error") return "error";
+      return "";
+    }
+    const clock = (iso) => {
+      const t = iso ? new Date(iso) : null;
+      return t && !isNaN(t) ? t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    };
+    const firstLine = (text) => String(text || "").split("\n")[0].trim().slice(0, 72) || "an empty comment";
+    function whoRow(name, iso) {
+      const row = el("div", "rprWho");
+      row.append(el("span", null, name), el("span", "rprWhen", clock(iso)));
+      return row;
+    }
+    function paragraphs(into, text, cls) {
+      for (const block of String(text).split(/\n{2,}/)) {
+        const said = block.trim();
+        if (said) into.appendChild(el("p", cls, said));
+      }
+    }
+    function trailFor(turn) {
+      const n = turn.progress.length + (turn.progressDropped || 0);
+      const box = el("details", "rprTrail");
+      box.appendChild(el("summary", null, `${n} progress line${n === 1 ? "" : "s"}`));
+      if (turn.progressDropped) box.appendChild(el("p", null, `\u2026${turn.progressDropped} earlier`));
+      for (const line of turn.progress) box.appendChild(el("p", null, line));
+      return box;
+    }
+    function stateRow(turn) {
+      const label = turnLine(turn);
+      const cancellable = CANCELLABLE.has(turn.state) && transportCan("cancel");
+      const stalled = turn.state === "queued" && turn.stalled;
+      if (!label && !cancellable && !stalled) return null;
+      const row = el("div", "rprTurnState");
+      row.append(el("span", ("rprDot " + dotClass(turn.state)).trim()), el("span", null, label));
+      if (cancellable) {
+        const btn = el("button", null, "cancel");
+        btn.addEventListener("click", () => transport.cancel(turn.request));
+        row.append(btn);
+      } else if (stalled) {
+        const btn = el("button", null, "send");
+        btn.addEventListener("click", () => {
+          thread.resume(openNoteId(), turn.id);
+          renderThread();
+        });
+        row.append(btn);
+      }
+      return row;
+    }
+    const openNoteId = () => open && open.kind === "comment" ? open.id : null;
+    const transportCan = (name) => !!(transport && typeof transport[name] === "function");
+    function renderThread() {
+      threadBox.textContent = "";
+      const id = openNoteId();
+      if (id == null) return threadBox.hidden = true;
+      const turns = thread.of(id);
+      threadBox.hidden = !turns.length;
+      if (!turns.length) return;
+      const them = transport && transport.label || "agent";
+      for (const turn of turns) {
+        const block = el("div", "rprTurn");
+        block.append(whoRow("you", turn.at));
+        paragraphs(block, turn.ask, "rprSaid");
+        if (turn.reply) {
+          block.append(whoRow(them, turn.repliedAt));
+          paragraphs(block, turn.reply, "rprReply");
+        }
+        if (turn.note) block.appendChild(el("p", "rprMangled", turn.note));
+        if (turn.progress && turn.progress.length) block.appendChild(trailFor(turn));
+        const state = stateRow(turn);
+        if (state) block.appendChild(state);
+        if (RUNNING.has(turn.state) && turn.progress && turn.progress.length) {
+          block.appendChild(el("p", "rprNow", turn.progress[turn.progress.length - 1]));
+        }
+        threadBox.appendChild(block);
+      }
+      scrollThreadToEnd();
+    }
+    function scrollThreadToEnd() {
+      threadBox.scrollTop = threadBox.scrollHeight;
+    }
+    let pill = null, pillDot = null, pillText = null, pillCancel = null;
+    let pillAt = null, pillTimer = null;
+    const pillTurn = () => pillAt ? thread.of(pillAt.noteId).find((t) => t.id === pillAt.turnId) || null : null;
+    function buildPill() {
+      if (pill) return;
+      pill = chrome(el("div", "rprWire"));
+      pill.hidden = true;
+      pillDot = el("span", "rprDot");
+      pillText = el("span", "rprWireText");
+      pillCancel = el("button", null, "cancel");
+      pill.append(pillDot, pillText, pillCancel);
+      pill.addEventListener("click", (e) => {
+        if (e.target === pillCancel || !pillAt) return;
+        thread.open(pillAt.noteId);
+      });
+      pillCancel.addEventListener("click", () => {
+        const turn = pillTurn();
+        if (turn && CANCELLABLE.has(turn.state) && transportCan("cancel")) transport.cancel(turn.request);
+      });
+      document.body.appendChild(pill);
+    }
+    function dropPill() {
+      clearTimeout(pillTimer);
+      pill?.remove();
+      pill = pillDot = pillText = pillCancel = null;
+      pillAt = null;
+    }
+    function renderPill(noteId, turnId) {
+      if (!pill) return;
+      const turn = thread.of(noteId).find((t) => t.id === turnId);
+      if (!turn) return;
+      const showing = pillTurn();
+      const mine = pillAt && pillAt.noteId === noteId && pillAt.turnId === turnId;
+      if (showing && !mine && RUNNING.has(showing.state)) return;
+      pillAt = { noteId, turnId };
+      clearTimeout(pillTimer);
+      pill.hidden = false;
+      pillDot.className = ("rprDot " + dotClass(turn.state)).trim();
+      const live2 = CANCELLABLE.has(turn.state) && turn.progress && turn.progress.length;
+      pillText.textContent = (live2 ? turn.progress[turn.progress.length - 1] : turnLine(turn)) || "done";
+      pillCancel.hidden = !(CANCELLABLE.has(turn.state) && transportCan("cancel"));
+      if (turn.state === "done" || turn.state === "cancelled") {
+        pillTimer = setTimeout(() => {
+          if (pill) {
+            pill.hidden = true;
+            pillAt = null;
+          }
+        }, 2500);
+      }
+    }
+    function showTurn(noteId, turnId) {
+      renderPill(noteId, turnId);
+      if (openNoteId() === noteId) renderThread();
     }
     let opened = null;
     function flushAnswer(force) {
@@ -1924,7 +2453,12 @@
       if (!force && field.value === opened) return;
       opened = field.value;
       if (open.kind === "ask") pen.answer(open.key, field.value);
-      else if (open.kind === "comment") pen.setNote(open.id, field.value);
+      else if (open.kind === "comment" && open.threaded) {
+        pen.updateNote(open.id, (n) => {
+          if (field.value) n.draft = field.value;
+          else delete n.draft;
+        });
+      } else if (open.kind === "comment") pen.setNote(open.id, field.value);
     }
     field.addEventListener("input", () => flushAnswer());
     function openAsk(k) {
@@ -1935,6 +2469,10 @@
       open = { kind: "ask", key: k };
       pen.openRequest(k);
       eyebrow.textContent = `ask ${r.n} of ${list.length}`;
+      resolveBtn.hidden = true;
+      threadBox.hidden = true;
+      threadBox.textContent = "";
+      field.placeholder = "your answer";
       question.hidden = false;
       question.textContent = r.ask;
       was.hidden = !r.stale;
@@ -1952,7 +2490,14 @@
     }
     function openComment(item) {
       leaveOpen();
-      open = { kind: "comment", id: item.id };
+      if (item.unread) {
+        pen.updateNote(item.id, (n) => {
+          delete n.unread;
+        });
+        pen.layout();
+      }
+      const threaded = !!(item.thread && item.thread.length);
+      open = { kind: "comment", id: item.id, textAtOpen: item.text || "", threaded };
       pen.openRequest(null);
       const t = item.target || {};
       eyebrow.textContent = `comment ${item.id} \xB7 ${t.tag || item.kind}${t.classes && t.classes.length ? "." + t.classes[0] : ""}`;
@@ -1960,14 +2505,20 @@
       was.hidden = true;
       orphanList.hidden = true;
       orphanList.textContent = "";
+      resolveBtn.hidden = false;
+      resolveBtn.textContent = item.resolved ? "reopen" : "resolve";
+      renderThread();
       field.hidden = false;
-      field.value = opened = item.text || "";
+      field.placeholder = threaded ? "reply to the agent\u2026" : "your comment";
+      field.value = opened = (threaded ? item.draft : item.text) || "";
       leftBtn.hidden = false;
       leftBtn.textContent = "discard";
-      rightBtn.textContent = "done \u203A";
-      hint.hidden = true;
+      rightBtn.textContent = threaded ? "send \u203A" : "done \u203A";
+      hint.hidden = !threaded;
+      hint.textContent = "\u2318\u21B5 send";
       const anchor = t.selector ? document.querySelector(t.selector) : null;
       show(anchor);
+      scrollThreadToEnd();
       field.focus();
     }
     function openOrphans() {
@@ -1976,6 +2527,9 @@
       pen.openRequest(null);
       const list = pen.orphans();
       eyebrow.textContent = `${list.length} orphaned`;
+      resolveBtn.hidden = true;
+      threadBox.hidden = true;
+      threadBox.textContent = "";
       question.hidden = false;
       question.textContent = "answers to questions the page no longer asks. They still export.";
       was.hidden = true;
@@ -1999,6 +2553,52 @@
       }
       pop.hidden = false;
       atBar();
+    }
+    function openResolved() {
+      leaveOpen();
+      open = { kind: "resolved" };
+      pen.openRequest(null);
+      const list = pen.items().filter((n) => n.resolved);
+      eyebrow.textContent = `${list.length} resolved`;
+      resolveBtn.hidden = true;
+      question.hidden = false;
+      question.textContent = "comments you are done with. They still export.";
+      was.hidden = true;
+      threadBox.hidden = true;
+      threadBox.textContent = "";
+      field.hidden = true;
+      hint.hidden = true;
+      leftBtn.hidden = true;
+      rightBtn.textContent = "close";
+      orphanList.hidden = false;
+      orphanList.textContent = "";
+      for (const n of list) {
+        const row = el("div", "rprOrphan");
+        row.append(el("p", null, firstLine(n.text)));
+        const back = el("button", null, "reopen");
+        back.addEventListener("click", () => {
+          thread.resolve(n.id, false);
+          thread.open(n.id);
+        });
+        const drop = el("button", null, "discard");
+        drop.addEventListener("click", () => {
+          pen.remove(n.id);
+          if (pen.items().some((x) => x.resolved)) openResolved();
+          else close();
+        });
+        row.append(back, drop);
+        orphanList.appendChild(row);
+      }
+      pop.hidden = false;
+      atBar();
+    }
+    function sendFollowUp() {
+      if (!open || open.kind !== "comment" || !open.threaded) return;
+      const said = field.value;
+      if (!said.trim()) return;
+      field.value = opened = "";
+      if (!thread.send(open.id, said)) field.value = opened = said;
+      renderThread();
     }
     function step(dir) {
       flushAnswer();
@@ -2077,9 +2677,26 @@
     prevBtn.addEventListener("click", () => step(-1));
     nextBtn.addEventListener("click", () => step(1));
     orphanBtn.addEventListener("click", () => open && open.kind === "orphans" ? close() : openOrphans());
+    resolvedBtn.addEventListener("click", () => open && open.kind === "resolved" ? close() : openResolved());
     pointBtn.addEventListener("click", () => pointing(pen.mode() !== "note"));
     copyBtn.addEventListener("click", copy);
     closeBtn.addEventListener("click", close);
+    resolveBtn.addEventListener("click", () => {
+      if (!open || open.kind !== "comment") return;
+      const id = open.id;
+      const note = pen.items().find((n) => n.id === id);
+      if (!note) return;
+      if (note.resolved) {
+        thread.resolve(id, false);
+        resolveBtn.textContent = "resolve";
+        return;
+      }
+      flushAnswer();
+      open = null;
+      thread.resolve(id, true);
+      pop.hidden = true;
+      pen.openRequest(null);
+    });
     stillBtn.addEventListener("click", () => {
       if (!open || open.kind !== "ask" || !field.value.trim()) return;
       flushAnswer(true);
@@ -2099,16 +2716,19 @@
     rightBtn.addEventListener("click", () => {
       if (!open) return;
       if (open.kind === "ask") step(1);
+      else if (open.kind === "comment" && open.threaded) sendFollowUp();
       else close();
     });
     pen.addEventListener("request:click", (e) => openAsk(e.detail.request.key));
     pen.addEventListener("item:add", (e) => openComment(e.detail.item));
+    pen.addEventListener("item:click", (e) => openComment(e.detail.item));
     pen.addEventListener("change", (e) => {
       refresh();
       if (e.detail.action === "load" && open && open.kind === "ask" && field.value === opened) {
         const r = pen.requests().find((x) => x.key === open.key);
         if (r) field.value = opened = r.answer || "";
       }
+      if (e.detail.action === "load") sweepUnfinished();
     });
     pen.addEventListener("save:error", () => bar.classList.add("failed"));
     if (pen.saveFailed()) bar.classList.add("failed");
@@ -2119,9 +2739,14 @@
         if (open) return close();
       }
       if (typing) {
-        if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && open && open.kind === "ask") {
-          e.preventDefault();
-          step(1);
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && open) {
+          if (open.kind === "ask") {
+            e.preventDefault();
+            step(1);
+          } else if (open.kind === "comment" && open.threaded) {
+            e.preventDefault();
+            sendFollowUp();
+          }
         }
         return;
       }
@@ -2173,6 +2798,7 @@
         return () => commentListeners.delete(fn);
       },
       json: () => pen.review(),
+      thread,
       destroy() {
         live = false;
         leaveOpen();
@@ -2183,6 +2809,7 @@
         window.removeEventListener("scroll", hideTip, true);
         clickThroughRule?.remove();
         clickThroughRule = null;
+        disconnect();
         pen.destroy();
         bar.remove();
         pop.remove();

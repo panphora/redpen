@@ -70,6 +70,46 @@ const CSS = `
   .rprPop .rprOrphan .q { color: var(--ink-faint, #8A857E); font-size: 11.5px; }
   .rprPop .rprOrphan + .rprOrphan { border-top: 1px solid var(--line, #DCD8D2); padding-top: 10px; }
 
+  /* The thread. Your words are muted and the reply is full ink, because the
+     reply is what you opened this to read. */
+  .rprPop .rprThread { max-height: 46vh; overflow-y: auto; margin: 0 0 9px; }
+  .rprPop .rprTurn + .rprTurn { border-top: 1px solid var(--line, #DCD8D2); margin-top: 10px; padding-top: 10px; }
+  .rprPop .rprWho { display: flex; align-items: baseline; gap: 8px; margin: 0 0 3px;
+    font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint, #8A857E); }
+  .rprPop .rprWhen { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .rprPop .rprSaid, .rprPop .rprReply, .rprPop .rprMangled { margin: 0 0 6px; white-space: pre-wrap; }
+  .rprPop .rprSaid { color: var(--ink-faint, #8A857E); }
+  .rprPop .rprReply { color: var(--ink, #17110C); }
+  .rprPop .rprMangled { color: var(--flag, #e5484d); }
+  .rprPop .rprTrail { margin: 0 0 6px; font-size: 11.5px; color: var(--ink-faint, #8A857E); }
+  .rprPop .rprTrail summary { cursor: pointer; }
+  .rprPop .rprTrail p { margin: 3px 0 0 12px; white-space: pre-wrap; }
+  .rprPop .rprTurnState { display: flex; align-items: center; gap: 7px;
+    font-size: 11.5px; color: var(--ink-faint, #8A857E); }
+  .rprPop .rprNow { margin: 2px 0 0 14px; font-size: 11.5px; color: var(--ink-faint, #8A857E); }
+  .rprPop .rprTurnState button { font: inherit; color: var(--ink-faint, #8A857E); background: none; border: 0;
+    border-radius: 5px; padding: 2px 6px; margin-left: auto; cursor: pointer; }
+  .rprPop .rprTurnState button:hover { color: var(--ink, #17110C); background: var(--line, #DCD8D2); }
+
+  /* The pill. One dot class, shared with the thread's state line, so a colour
+     never means one thing in the corner and another in the popover. */
+  .rprDot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none;
+    background: var(--ink-faint, #8A857E); }
+  .rprDot.working { background: var(--flag, #e5484d); animation: rprWirePulse 1.1s ease-in-out infinite; }
+  .rprDot.done { background: #2f9e44; }
+  .rprDot.error { background: var(--flag, #e5484d); }
+  @keyframes rprWirePulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+
+  .rprWire { position: fixed; left: 14px; bottom: 14px; z-index: 99995; display: flex; align-items: center; gap: 8px;
+    max-width: min(420px, calc(100vw - 28px)); cursor: pointer;
+    font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace); font-size: 11.5px; letter-spacing: .06em;
+    background: var(--card, #FDFDFC); border: 1px solid var(--line, #DCD8D2); border-radius: 7px; padding: 5px 8px; }
+  .rprWire[hidden] { display: none; }
+  .rprWire .rprWireText { color: var(--ink, #17110C); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rprWire button { font: inherit; letter-spacing: inherit; color: var(--ink-faint, #8A857E); background: none;
+    border: 0; border-radius: 5px; padding: 2px 6px; cursor: pointer; }
+  .rprWire button:hover { color: var(--ink, #17110C); background: var(--line, #DCD8D2); }
+
   .rprTip { position: fixed; z-index: 99997; max-width: 320px; pointer-events: none;
     font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace); font-size: 11.5px; line-height: 1.45;
     color: var(--ink, #17110C); background: var(--card, #FDFDFC); border: 1px solid var(--line, #DCD8D2);
@@ -158,9 +198,10 @@ export function mount(opts = {}) {
   const count = el('span', 'rprCount', '0/0');
   const nextBtn = el('button', 'rprStep', '›');
   const orphanBtn = el('button', 'rprWarn', '');
+  const resolvedBtn = el('button', null, '');
   const pointBtn = el('button', null, 'point');
   const copyBtn = el('button', null, 'copy');
-  bar.append(prevBtn, count, nextBtn, orphanBtn, pointBtn, copyBtn);
+  bar.append(prevBtn, count, nextBtn, orphanBtn, resolvedBtn, pointBtn, copyBtn);
   document.body.appendChild(bar);
 
   // ---------- the question's hover preview ----------
@@ -222,6 +263,11 @@ export function mount(opts = {}) {
     const orphaned = pen.orphans();
     orphanBtn.hidden = !orphaned.length;
     orphanBtn.textContent = orphaned.length + ' orphaned';
+    // A resolved comment is off the page entirely, so this button is the only
+    // way back to it. Hidden at zero, like the orphan list it mirrors.
+    const retired = pen.items().filter(n => n.resolved).length;
+    resolvedBtn.hidden = !retired;
+    resolvedBtn.textContent = retired + ' resolved';
     pointBtn.classList.toggle('on', pen.mode() === 'note');
   }
 
@@ -230,9 +276,10 @@ export function mount(opts = {}) {
   const pop = chrome(el('div', 'rprPop'));
   pop.hidden = true;
   const eyebrow = el('span', 'rprEyebrow');
+  const resolveBtn = el('button', 'rprX', 'resolve');
   const closeBtn = el('button', 'rprX', '×');
   const top = el('div', 'rprTop');
-  top.append(eyebrow, closeBtn);
+  top.append(eyebrow, resolveBtn, closeBtn);
   const was = el('div', 'rprWas');
   const wasLabel = el('b', null, 'answered when the question read');
   const wasText = el('span');
@@ -245,13 +292,17 @@ export function mount(opts = {}) {
   const field = el('textarea');
   field.placeholder = 'your answer';
   const orphanList = el('div', 'rprScroll');
+  const threadBox = el('div', 'rprThread');
   const foot = el('div', 'rprFoot');
   const leftBtn = el('button', null, '‹ prev');
   const spacer = el('span', 'rprSpacer');
   const hint = el('span', 'rprHint', '⌘↵ next');
   const rightBtn = el('button', null, 'next ›');
   foot.append(leftBtn, spacer, hint, rightBtn);
-  pop.append(top, was, question, orphanList, field, foot);
+  // The thread scrolls; the composer and the footer sit outside it, so the send
+  // button never scrolls away and the popover's height stays bounded — which is
+  // what keeps place()'s above/below flip working.
+  pop.append(top, was, question, orphanList, threadBox, field, foot);
   document.body.appendChild(pop);
 
   let open = null;   // {kind:'ask', key} | {kind:'comment', id} | {kind:'orphans'}
@@ -294,10 +345,10 @@ export function mount(opts = {}) {
   // the first is open, and destroy. Only discard is different, and it clears
   // `open` itself before removing the item, which is what makes it silent.
   function leaveOpen() {
-    const finished = open && open.kind === 'comment' ? open.id : null;
+    const at = open && open.kind === 'comment' ? open : null;
     flushAnswer();
     open = null;
-    if (finished) announce(finished);
+    if (at && shouldAnnounce(at)) announce(at.id);
   }
 
   function close() {
@@ -312,8 +363,22 @@ export function mount(opts = {}) {
   const commentListeners = new Set();
   if (typeof opts.onComment === 'function') commentListeners.add(opts.onComment);
 
+  // A comment is announced when it is finished for the first time, and never
+  // again. Every way out of the popover runs leaveOpen, and comments became
+  // reopenable the moment marker tags took clicks, so without this guard opening
+  // a thread to read the agent's reply and pressing Escape would send the same
+  // comment again and cost a second edit to the file. Once a thread exists the
+  // first message is already gone and the comment text is frozen, which is what
+  // makes the thread check sufficient on its own.
+  function shouldAnnounce(at) {
+    const note = pen.items().find(n => n.id === at.id);
+    if (!note) return false;
+    if (note.thread && note.thread.length) return false;
+    return note.text !== at.textAtOpen;
+  }
+
   function announce(id) {
-    if (!commentListeners.size) return;
+    if (!commentListeners.size && !transport) return;
     // The whole projection, not just the item: an area note on a registered
     // target reads as fractions of the wrong box without the basis and coords
     // that live at the top of this envelope, and building a second per-item
@@ -330,6 +395,544 @@ export function mount(opts = {}) {
         console.warn('[review] onComment failed', err);
       }
     }
+    // Turn one. A host listener and a transport are not alternatives: a page can
+    // want its own copy of every comment AND an agent working on them, and the
+    // announce guard has already established this note has no thread yet.
+    sendTurn(id, item.said);
+  }
+
+  // ---------- the thread ----------
+  //
+  // A comment can hold a conversation. You say something, an agent answers in
+  // words and edits the file, and you answer that. The words live on the note as
+  // `note.thread`, one entry per exchange. The edit does not live here at all: it
+  // reaches the page as an ordinary external change to the file, through live
+  // sync, so a finished request and a visible change are two different events.
+  //
+  // This owns every piece of that state and knows nothing about clay.wire. A
+  // transport is handed in, speaks in request ids, and calls back through `sink`.
+  // Turning a wire frame into one of those four calls is the transport's whole
+  // job, because picking a reply out of a stream of status lines takes knowledge
+  // of the wire that has no business in here.
+
+  const CAP = { line: 400, lines: 50, reply: 32 * 1024, say: 2000, pairs: 8, history: 16 * 1024 };
+  // has a request on the wire, versus is simply not finished. `queued` is the
+  // difference, and every rule below cares which one it is looking at.
+  const RUNNING = new Set(['sent', 'acked', 'landing']);
+  const UNFINISHED = new Set(['queued', 'sent', 'acked', 'landing']);
+
+  // redpen mints the request id rather than taking one back from the transport,
+  // because clayjs emits the first frame synchronously from inside send(): a
+  // mapping built from the return value is built too late to route it. Two tabs
+  // open on one file would mint turn t1 of note 16 at the same moment and a
+  // reused id is refused outright on the wire, so the token makes that collision
+  // impossible rather than unlikely.
+  const token = Math.random().toString(36).slice(2, 6);
+
+  let transport = null;
+  let inflight = null;             // the one request id on the wire, or null
+  const byRequest = new Map();     // request id -> { noteId, turnId }
+
+  const now = () => new Date().toISOString();
+  const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+
+  function noteById(id) {
+    return pen.items().find(n => n.id === id) || null;
+  }
+
+  // Mutating a turn is always a read-modify-write through the engine: items()
+  // hands out shallow copies, so a turn reached any other way is either a copy
+  // nothing will store or a shared sub-object that changes without a save.
+  function withTurn(requestId, fn) {
+    const at = byRequest.get(requestId);
+    if (!at) return false;
+    let touched = false;
+    pen.updateNote(at.noteId, note => {
+      const turn = (note.thread || []).find(t => t.id === at.turnId);
+      if (!turn) return;
+      touched = true;
+      fn(turn, note);
+    });
+    if (touched) showTurn(at.noteId, at.turnId);
+    return touched;
+  }
+
+  // A turn that reached a terminal state lets the queue move. The drain is
+  // deliberately only reachable from here, which is what keeps the reload case
+  // honest: the load sweep terminates turns without going through the sink, so a
+  // queued turn found at load stays queued and waits to be sent by hand.
+  function settleTurn(requestId, state, error) {
+    const ok = withTurn(requestId, turn => {
+      turn.state = state;
+      turn.endedAt = now();
+      if (error) turn.error = cut(String(error), CAP.line);
+    });
+    byRequest.delete(requestId);
+    if (inflight === requestId) inflight = null;
+    // Drained even when no turn was found. A comment discarded mid-request
+    // leaves a request nothing can be written to, and holding the queue behind
+    // it would wedge every later send for the life of the page.
+    drain();
+    return ok;
+  }
+
+  // What review.js hands the transport. Every method takes the request id, and
+  // one that names no live turn is dropped: a frame for a comment discarded
+  // mid-request is not an error, it is a race with a button.
+  const sink = {
+    state(requestId, state, error) {
+      if (!RUNNING.has(state)) return settleTurn(requestId, state, error);
+      return withTurn(requestId, turn => { turn.state = state; });
+    },
+    progress(requestId, line) {
+      const said = cut(String(line ?? '').trim(), CAP.line);
+      if (!said) return false;
+      return withTurn(requestId, turn => {
+        const trail = turn.progress || (turn.progress = []);
+        trail.push(said);
+        // A chatty handler must not grow a blob that is rewritten on every
+        // keystroke. The count is kept because "it said 200 things" is itself
+        // worth knowing when you are reading back what happened.
+        if (trail.length > CAP.lines) {
+          turn.progressDropped = (turn.progressDropped || 0) + (trail.length - CAP.lines);
+          trail.splice(0, trail.length - CAP.lines);
+        }
+      });
+    },
+    reply(requestId, text, opts = {}) {
+      const said = String(text ?? '');
+      if (!said) return false;
+      let rang = false;
+      const ok = withTurn(requestId, (turn, note) => {
+        turn.reply = cut(opts.append && turn.reply ? turn.reply + said : said, CAP.reply);
+        turn.repliedAt = now();
+        // Three surfaces of increasing durability carry a reply that arrived
+        // while you were elsewhere: the pill for a moment, this ring on the
+        // marker, and the stored flag that survives a reload. Reading the thread
+        // is what clears it, so an open popover was already read.
+        if (open && open.kind === 'comment' && open.id === note.id) return;
+        rang = !note.unread;
+        note.unread = true;
+      });
+      // Only when the ring actually appeared. Markers are re-measured and
+      // rebuilt from scratch on every layout, so repainting for a reply to a
+      // marker that is already ringing is work for no visible change.
+      if (rang) pen.layout();
+      return ok;
+    },
+    // The transport's own remark about an exchange, which is how a mangled reply
+    // line becomes visible without review.js knowing what a status line is.
+    note(requestId, line) {
+      const said = cut(String(line ?? '').trim(), CAP.line);
+      if (!said) return false;
+      return withTurn(requestId, turn => { turn.note = said; });
+    },
+  };
+
+  // The exchanges as the agent should read them: `{you, agent}` pairs, because
+  // the pairing IS the information and it reads correctly pasted into a prompt
+  // with no legend. Progress lines never travel — they are the agent's own
+  // output coming back at it.
+  function historyFor(thread) {
+    if (!thread || thread.length < 2) return null;
+    const pairs = thread.map((t, i) => {
+      const last = i === thread.length - 1;
+      const you = last ? t.ask : cut(t.ask, CAP.say);
+      if (t.reply) return { you, agent: cut(t.reply, CAP.say) };
+      if (UNFINISHED.has(t.state)) return { you };
+      return { you, failed: t.error || 'this one did not finish' };
+    });
+    let earlier = 0;
+    while (pairs.length > CAP.pairs || (pairs.length > 1 && JSON.stringify(pairs).length > CAP.history)) {
+      pairs.shift();
+      earlier++;
+    }
+    return { pairs, earlier };
+  }
+
+  // One request in flight across the whole page. `wire serve` runs a process per
+  // request and allows eight, so two at once means two programs reading, editing
+  // and writing one file, and the second write silently loses the first one's
+  // change. Tap, comment, tap the next thing is redpen's ordinary rhythm, which
+  // makes that a likely path rather than an exotic one.
+  function sendTurn(noteId, said) {
+    if (!transport) return null;
+    // The store starts empty and fills a few milliseconds later. A turn written
+    // in that window is erased by the read that follows it.
+    if (!pen.loaded()) return null;
+    const text = String(said ?? '');
+    if (!text.trim()) return null;
+    const note = noteById(noteId);
+    if (!note) return null;
+
+    const turnId = 't' + ((note.thread ? note.thread.length : 0) + 1);
+    const queued = !!inflight;
+    const turn = {
+      id: turnId,
+      request: `rp-${token}-${noteId}-${turnId}`,
+      // Frozen at send time and never rewritten, so a reworded comment cannot
+      // silently claim the agent was answering something it never saw. A stored
+      // answer's question follows the same rule for the same reason.
+      ask: text,
+      at: now(),
+      state: queued ? 'queued' : 'sent',
+    };
+
+    // Written before the transport is called, never after: clayjs emits the
+    // first frame from inside send(), and a frame arriving then has to find a
+    // turn to attach to. Typing a follow-up is also the strongest evidence there
+    // is that you are not done with this comment, so a resolved one comes back.
+    let stored = null;
+    pen.updateNote(noteId, n => {
+      stored = n.thread || (n.thread = []);
+      stored.push(turn);
+      delete n.draft;
+      delete n.resolved;
+    });
+    if (!stored) return null;
+    if (queued) showTurn(noteId, turnId);
+    else dispatch(noteId, turnId);
+    return turn;
+  }
+
+  // Everything both send paths share. Reads the turn back out of the store
+  // rather than taking it as an argument, so the payload always describes what
+  // was actually written.
+  function dispatch(noteId, turnId) {
+    const note = noteById(noteId);
+    const thread = (note && note.thread) || [];
+    const at = thread.findIndex(t => t.id === turnId);
+    if (at < 0) return;
+    const requestId = thread[at].request;
+
+    byRequest.set(requestId, { noteId, turnId });
+    inflight = requestId;
+    pen.updateNote(noteId, n => {
+      for (const t of n.thread || []) if (t.id === turnId) { t.state = 'sent'; delete t.stalled; }
+    });
+    showTurn(noteId, turnId);
+
+    const projection = pen.review();
+    const history = historyFor(thread.slice(0, at + 1));
+    const ok = transport.send({
+      id: requestId,
+      ask: thread[at].ask,
+      turn: at + 1,
+      item: projection.items.find(i => i.kind === 'comment' && i.id === noteId) || null,
+      projection,
+      ...(history ? { history } : {}),
+    });
+    // A transport that refuses says so on the thread. It is an outcome, not an
+    // exception: there is nowhere better for it to go, and the exchange is
+    // sitting right there waiting to be read.
+    if (!ok) settleTurn(requestId, 'error', 'this could not be sent');
+  }
+
+  // The oldest queued turn on the page, sent now that the wire is free. Live
+  // only: you pressed send and nothing changed under you, so sending for you is
+  // what you asked for. After a reload nobody knows whether the earlier
+  // request's edit landed, and sending then could ask for the same change twice.
+  function drain() {
+    if (!transport || inflight) return;
+    let pick = null;
+    for (const note of pen.items()) {
+      for (const turn of note.thread || []) {
+        if (turn.state !== 'queued') continue;
+        if (!pick || turn.at < pick.at) pick = { noteId: note.id, turnId: turn.id, at: turn.at };
+      }
+    }
+    if (pick) dispatch(pick.noteId, pick.turnId);
+  }
+
+  // A page closed mid-request takes clayjs's records with it, so nothing will
+  // ever settle those turns. On load — never at mount, where the store is still
+  // empty — they become `unknown`, which is terminal, so a follow-up is allowed
+  // again. Any reply that had already arrived is kept: an agent that said what
+  // it did and then lost the page still told you something true.
+  function sweepUnfinished() {
+    pen.updateNotes(note => {
+      if (!note.thread) return false;
+      let changed = false;
+      for (const turn of note.thread) {
+        // A turn that was only ever queued still has everything you typed and
+        // was never sent, so it is marked rather than terminated: the thread
+        // gives it a send button and waits for you to press it.
+        if (turn.state === 'queued' && !turn.stalled) { turn.stalled = true; changed = true; continue; }
+        if (!RUNNING.has(turn.state)) continue;
+        turn.state = 'unknown';
+        turn.endedAt = now();
+        changed = true;
+      }
+      return changed;
+    });
+  }
+
+  // Held rather than only handed back, because destroy() has to take the
+  // transport down too: a subscription outliving the review it feeds writes into
+  // an engine that is already gone.
+  function disconnect() {
+    if (!transport) return;
+    const t = transport;
+    transport = null;
+    inflight = null;
+    byRequest.clear();
+    dropPill();
+    t.detach?.();
+  }
+
+  const thread = {
+    // Returns its own disconnect, and refuses a second transport rather than
+    // replacing the first: two would each believe they own `inflight`, and the
+    // one-request rule is the only thing keeping two agents off one file.
+    connect(t) {
+      if (!t || typeof t.send !== 'function') return () => {};
+      if (transport) {
+        console.warn('[review] a transport is already connected');
+        return () => {};
+      }
+      transport = t;
+      buildPill();
+      t.attach?.(sink);
+      return () => { if (transport === t) disconnect(); };
+    },
+    // The one queued turn a reload left behind. Live queueing drains itself;
+    // this is the hand on the button that the reload rule deliberately removed.
+    resume(noteId, turnId) {
+      if (!transport || inflight) return false;
+      const note = noteById(noteId);
+      const turn = (note && note.thread || []).find(t => t.id === turnId);
+      if (!turn || turn.state !== 'queued') return false;
+      dispatch(noteId, turnId);
+      return true;
+    },
+    // Done with this comment, which is not the same as the agent succeeding. A
+    // running request is left running: cancel is refused once a request reaches
+    // landing, so "resolve cancels" is a promise redpen cannot keep, and the
+    // agent is mid-edit of your file either way.
+    resolve(noteId, on = true) {
+      const ok = pen.updateNote(noteId, n => {
+        if (on) n.resolved = now();
+        else delete n.resolved;
+      });
+      if (ok) pen.layout();
+      return ok;
+    },
+    send: sendTurn,
+    open(noteId) {
+      const note = noteById(noteId);
+      if (note) openComment(note);
+    },
+    // A deep copy, because items() shares a note's nested objects by reference:
+    // a host that edited what it was given would change what the store writes
+    // without ever saving, which looks like it works until it does not.
+    of(noteId) {
+      const note = noteById(noteId);
+      if (!note || !note.thread) return [];
+      return Object.freeze(JSON.parse(JSON.stringify(note.thread)).map(Object.freeze));
+    },
+    connected: () => !!transport,
+    busy: () => !!inflight,
+  };
+
+  // ---------- the thread's chrome ----------
+
+  const CANCELLABLE = new Set(['sent', 'acked']);
+
+  const TURN_LABEL = {
+    queued: 'waiting for the wire',
+    sent: 'sending to the agent',
+    acked: 'the agent is working',
+    landing: 'waiting for the change',
+    error: 'the agent failed',
+    // `wire serve` signals rather than kills, and lets a handler that is
+    // mid-write finish, so the file may still change after this.
+    cancelled: 'the agent was asked to stop',
+    unknown: 'this was still running when the page was closed',
+  };
+
+  function turnLine(turn) {
+    if (turn.state === 'error') return turn.error || TURN_LABEL.error;
+    // Only review.js can say this: the wire knows the request has not landed and
+    // the thread knows the words already arrived.
+    if (turn.state === 'landing' && turn.reply) return 'answered, waiting for the change';
+    // A handler that edited the file and said nothing is the ordinary shape of a
+    // formatter or a shell script, so this is a statement, not an accusation. A
+    // reply that arrived MANGLED reads completely differently, at full size,
+    // where the reply would have been.
+    if (turn.state === 'done') return turn.reply ? '' : 'finished with nothing said, the change is on the page';
+    return TURN_LABEL[turn.state] || turn.state;
+  }
+
+  function dotClass(state) {
+    if (RUNNING.has(state)) return 'working';
+    if (state === 'done') return 'done';
+    if (state === 'error') return 'error';
+    return '';
+  }
+
+  const clock = iso => {
+    const t = iso ? new Date(iso) : null;
+    return t && !isNaN(t) ? t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  };
+
+  const firstLine = text => (String(text || '').split('\n')[0].trim().slice(0, 72) || 'an empty comment');
+
+  function whoRow(name, iso) {
+    const row = el('div', 'rprWho');
+    row.append(el('span', null, name), el('span', 'rprWhen', clock(iso)));
+    return row;
+  }
+
+  // A blank line starts a new paragraph and a single newline survives inside one,
+  // which is how a handler's prose was written and how it should read back.
+  //
+  // textContent on every path, never innerHTML. The handler is a local process,
+  // but local stops meaning safe the moment that process is a model summarizing a
+  // document it just read.
+  function paragraphs(into, text, cls) {
+    for (const block of String(text).split(/\n{2,}/)) {
+      const said = block.trim();
+      if (said) into.appendChild(el('p', cls, said));
+    }
+  }
+
+  function trailFor(turn) {
+    const n = turn.progress.length + (turn.progressDropped || 0);
+    const box = el('details', 'rprTrail');
+    box.appendChild(el('summary', null, `${n} progress line${n === 1 ? '' : 's'}`));
+    if (turn.progressDropped) box.appendChild(el('p', null, `…${turn.progressDropped} earlier`));
+    for (const line of turn.progress) box.appendChild(el('p', null, line));
+    return box;
+  }
+
+  function stateRow(turn) {
+    const label = turnLine(turn);
+    const cancellable = CANCELLABLE.has(turn.state) && transportCan('cancel');
+    // A queued turn drains itself while the page is live. One found after a
+    // reload does not, because nobody knows whether the request it was waiting
+    // behind ever landed, so it asks rather than repeating a change.
+    const stalled = turn.state === 'queued' && turn.stalled;
+    if (!label && !cancellable && !stalled) return null;
+    const row = el('div', 'rprTurnState');
+    row.append(el('span', ('rprDot ' + dotClass(turn.state)).trim()), el('span', null, label));
+    if (cancellable) {
+      const btn = el('button', null, 'cancel');
+      btn.addEventListener('click', () => transport.cancel(turn.request));
+      row.append(btn);
+    } else if (stalled) {
+      const btn = el('button', null, 'send');
+      btn.addEventListener('click', () => { thread.resume(openNoteId(), turn.id); renderThread(); });
+      row.append(btn);
+    }
+    return row;
+  }
+
+  const openNoteId = () => (open && open.kind === 'comment' ? open.id : null);
+  const transportCan = name => !!(transport && typeof transport[name] === 'function');
+
+  function renderThread() {
+    threadBox.textContent = '';
+    const id = openNoteId();
+    if (id == null) return (threadBox.hidden = true);
+    const turns = thread.of(id);
+    threadBox.hidden = !turns.length;
+    if (!turns.length) return;
+    const them = (transport && transport.label) || 'agent';
+    for (const turn of turns) {
+      const block = el('div', 'rprTurn');
+      block.append(whoRow('you', turn.at));
+      paragraphs(block, turn.ask, 'rprSaid');
+      if (turn.reply) {
+        block.append(whoRow(them, turn.repliedAt));
+        paragraphs(block, turn.reply, 'rprReply');
+      }
+      if (turn.note) block.appendChild(el('p', 'rprMangled', turn.note));
+      if (turn.progress && turn.progress.length) block.appendChild(trailFor(turn));
+      const state = stateRow(turn);
+      if (state) block.appendChild(state);
+      // What it is doing right now, spelled out under the state line. The trail
+      // above holds the rest and stays collapsed.
+      if (RUNNING.has(turn.state) && turn.progress && turn.progress.length) {
+        block.appendChild(el('p', 'rprNow', turn.progress[turn.progress.length - 1]));
+      }
+      threadBox.appendChild(block);
+    }
+    scrollThreadToEnd();
+  }
+
+  // A hidden element measures zero, so this does nothing until the popover is on
+  // screen — which is exactly why openComment calls it again after show().
+  function scrollThreadToEnd() {
+    threadBox.scrollTop = threadBox.scrollHeight;
+  }
+
+  // ---------- the pill ----------
+  // Built inside connect(), so a page with no transport never pays for it.
+
+  let pill = null, pillDot = null, pillText = null, pillCancel = null;
+  let pillAt = null, pillTimer = null;
+
+  const pillTurn = () => (pillAt ? thread.of(pillAt.noteId).find(t => t.id === pillAt.turnId) || null : null);
+
+  function buildPill() {
+    if (pill) return;
+    pill = chrome(el('div', 'rprWire'));
+    pill.hidden = true;
+    pillDot = el('span', 'rprDot');
+    pillText = el('span', 'rprWireText');
+    pillCancel = el('button', null, 'cancel');
+    pill.append(pillDot, pillText, pillCancel);
+    // The pill is a way back to the conversation it is reporting on, which is
+    // the only place the reply it is hinting at can actually be read.
+    pill.addEventListener('click', e => {
+      if (e.target === pillCancel || !pillAt) return;
+      thread.open(pillAt.noteId);
+    });
+    pillCancel.addEventListener('click', () => {
+      const turn = pillTurn();
+      if (turn && CANCELLABLE.has(turn.state) && transportCan('cancel')) transport.cancel(turn.request);
+    });
+    document.body.appendChild(pill);
+  }
+
+  function dropPill() {
+    clearTimeout(pillTimer);
+    pill?.remove();
+    pill = pillDot = pillText = pillCancel = null;
+    pillAt = null;
+  }
+
+  function renderPill(noteId, turnId) {
+    if (!pill) return;
+    const turn = thread.of(noteId).find(t => t.id === turnId);
+    if (!turn) return;
+    // The newest request owns the pill. An older one still finishing would
+    // otherwise overwrite the state of the one just sent.
+    const showing = pillTurn();
+    const mine = pillAt && pillAt.noteId === noteId && pillAt.turnId === turnId;
+    if (showing && !mine && RUNNING.has(showing.state)) return;
+    pillAt = { noteId, turnId };
+    clearTimeout(pillTimer);
+    pill.hidden = false;
+    pillDot.className = ('rprDot ' + dotClass(turn.state)).trim();
+    // The agent's own words while it is working, the state otherwise. This is
+    // what the pill has always shown, and the thread's state row deliberately
+    // does the opposite: there the label leads and the live line sits under it.
+    const live = CANCELLABLE.has(turn.state) && turn.progress && turn.progress.length;
+    pillText.textContent = (live ? turn.progress[turn.progress.length - 1] : turnLine(turn)) || 'done';
+    pillCancel.hidden = !(CANCELLABLE.has(turn.state) && transportCan('cancel'));
+    // A finished request stops being news. An error stays until the next one, so
+    // a failure cannot scroll past unread.
+    if (turn.state === 'done' || turn.state === 'cancelled') {
+      pillTimer = setTimeout(() => { if (pill) { pill.hidden = true; pillAt = null; } }, 2500);
+    }
+  }
+
+  // One repaint for every way a turn changes, so no caller has to remember which
+  // of the two surfaces its change is visible on.
+  function showTurn(noteId, turnId) {
+    renderPill(noteId, turnId);
+    if (openNoteId() === noteId) renderThread();
   }
 
   // ---------- answering ----------
@@ -345,7 +948,12 @@ export function mount(opts = {}) {
     if (!force && field.value === opened) return;
     opened = field.value;
     if (open.kind === 'ask') pen.answer(open.key, field.value);
-    else if (open.kind === 'comment') pen.setNote(open.id, field.value);
+    // Once the first message is sent the comment text is fixed: it is the
+    // thread's opening line and the agent has already been given it. The field
+    // becomes the composer from then on, and what you type is an unsent draft.
+    else if (open.kind === 'comment' && open.threaded) {
+      pen.updateNote(open.id, n => { if (field.value) n.draft = field.value; else delete n.draft; });
+    } else if (open.kind === 'comment') pen.setNote(open.id, field.value);
   }
 
   // Every keystroke, with no debounce. The store already collapses this: one blob
@@ -362,6 +970,10 @@ export function mount(opts = {}) {
     open = { kind: 'ask', key: k };
     pen.openRequest(k);
     eyebrow.textContent = `ask ${r.n} of ${list.length}`;
+    resolveBtn.hidden = true;
+    threadBox.hidden = true;
+    threadBox.textContent = '';
+    field.placeholder = 'your answer';
     question.hidden = false;
     question.textContent = r.ask;
     was.hidden = !r.stale;
@@ -380,7 +992,17 @@ export function mount(opts = {}) {
 
   function openComment(item) {
     leaveOpen();
-    open = { kind: 'comment', id: item.id };
+    // Reading the thread is what clears the marker's ring, and opening the
+    // popover is the only way to read it.
+    if (item.unread) {
+      pen.updateNote(item.id, n => { delete n.unread; });
+      pen.layout();
+    }
+    // textAtOpen is what the announce guard compares against. `opened` cannot do
+    // that job: the input listener moves it on every keystroke, so by the time
+    // the popover closes it always equals the current text.
+    const threaded = !!(item.thread && item.thread.length);
+    open = { kind: 'comment', id: item.id, textAtOpen: item.text || '', threaded };
     pen.openRequest(null);
     const t = item.target || {};
     eyebrow.textContent = `comment ${item.id} · ${t.tag || item.kind}${t.classes && t.classes.length ? '.' + t.classes[0] : ''}`;
@@ -388,14 +1010,27 @@ export function mount(opts = {}) {
     was.hidden = true;
     orphanList.hidden = true;
     orphanList.textContent = '';
+    resolveBtn.hidden = false;
+    resolveBtn.textContent = item.resolved ? 'reopen' : 'resolve';
+    renderThread();
     field.hidden = false;
-    field.value = opened = item.text || '';
+    field.placeholder = threaded ? 'reply to the agent…' : 'your comment';
+    field.value = opened = (threaded ? item.draft : item.text) || '';
     leftBtn.hidden = false;
     leftBtn.textContent = 'discard';
-    rightBtn.textContent = 'done ›';
-    hint.hidden = true;
+    // Sending is asymmetric on purpose. The first message still goes on leaving
+    // the popover, which is the flow this whole tool is built around: tap, type,
+    // tap the next thing. A follow-up is explicit, because by then you are in a
+    // conversation and pressing Escape must not send.
+    rightBtn.textContent = threaded ? 'send ›' : 'done ›';
+    hint.hidden = !threaded;
+    hint.textContent = '⌘↵ send';
     const anchor = t.selector ? document.querySelector(t.selector) : null;
     show(anchor);
+    // renderThread ran while the popover was still hidden, because place() has to
+    // measure a filled one. Nothing inside a hidden element has a scroll height,
+    // so the newest exchange is only reachable once it is on screen.
+    scrollThreadToEnd();
     field.focus();
   }
 
@@ -408,6 +1043,9 @@ export function mount(opts = {}) {
     pen.openRequest(null);
     const list = pen.orphans();
     eyebrow.textContent = `${list.length} orphaned`;
+    resolveBtn.hidden = true;
+    threadBox.hidden = true;
+    threadBox.textContent = '';
     question.hidden = false;
     question.textContent = 'answers to questions the page no longer asks. They still export.';
     was.hidden = true;
@@ -431,6 +1069,58 @@ export function mount(opts = {}) {
     }
     pop.hidden = false;
     atBar();
+  }
+
+  // Mirrors the orphan list exactly, and for the same reason: these are David's
+  // own words, and the only way one ever leaves is him clicking discard.
+  function openResolved() {
+    leaveOpen();
+    open = { kind: 'resolved' };
+    pen.openRequest(null);
+    const list = pen.items().filter(n => n.resolved);
+    eyebrow.textContent = `${list.length} resolved`;
+    resolveBtn.hidden = true;
+    question.hidden = false;
+    question.textContent = 'comments you are done with. They still export.';
+    was.hidden = true;
+    threadBox.hidden = true;
+    threadBox.textContent = '';
+    field.hidden = true;
+    hint.hidden = true;
+    leftBtn.hidden = true;
+    rightBtn.textContent = 'close';
+    orphanList.hidden = false;
+    orphanList.textContent = '';
+    for (const n of list) {
+      const row = el('div', 'rprOrphan');
+      row.append(el('p', null, firstLine(n.text)));
+      const back = el('button', null, 'reopen');
+      back.addEventListener('click', () => {
+        thread.resolve(n.id, false);
+        thread.open(n.id);
+      });
+      const drop = el('button', null, 'discard');
+      drop.addEventListener('click', () => {
+        pen.remove(n.id);
+        if (pen.items().some(x => x.resolved)) openResolved();
+        else close();
+      });
+      row.append(back, drop);
+      orphanList.appendChild(row);
+    }
+    pop.hidden = false;
+    atBar();
+  }
+
+  function sendFollowUp() {
+    if (!open || open.kind !== 'comment' || !open.threaded) return;
+    const said = field.value;
+    if (!said.trim()) return;
+    // Cleared before the send, so the keystroke flush that follows cannot write
+    // the draft back over a message that is already on the wire.
+    field.value = opened = '';
+    if (!thread.send(open.id, said)) field.value = opened = said;
+    renderThread();
   }
 
   function step(dir) {
@@ -540,9 +1230,31 @@ export function mount(opts = {}) {
   prevBtn.addEventListener('click', () => step(-1));
   nextBtn.addEventListener('click', () => step(1));
   orphanBtn.addEventListener('click', () => (open && open.kind === 'orphans' ? close() : openOrphans()));
+  resolvedBtn.addEventListener('click', () => (open && open.kind === 'resolved' ? close() : openResolved()));
   pointBtn.addEventListener('click', () => pointing(pen.mode() !== 'note'));
   copyBtn.addEventListener('click', copy);
   closeBtn.addEventListener('click', close);
+
+  // Resolving closes: the comment has left the page, so leaving the popover open
+  // on it would be showing you something that is no longer there. `open` is
+  // cleared first for the same reason discard clears it — resolving is not a way
+  // of finishing a comment, and must not send one.
+  resolveBtn.addEventListener('click', () => {
+    if (!open || open.kind !== 'comment') return;
+    const id = open.id;
+    const note = pen.items().find(n => n.id === id);
+    if (!note) return;
+    if (note.resolved) {
+      thread.resolve(id, false);
+      resolveBtn.textContent = 'resolve';
+      return;
+    }
+    flushAnswer();
+    open = null;
+    thread.resolve(id, true);
+    pop.hidden = true;
+    pen.openRequest(null);
+  });
 
   stillBtn.addEventListener('click', () => {
     if (!open || open.kind !== 'ask' || !field.value.trim()) return;
@@ -566,11 +1278,13 @@ export function mount(opts = {}) {
   rightBtn.addEventListener('click', () => {
     if (!open) return;
     if (open.kind === 'ask') step(1);
+    else if (open.kind === 'comment' && open.threaded) sendFollowUp();
     else close();
   });
 
   pen.addEventListener('request:click', e => openAsk(e.detail.request.key));
   pen.addEventListener('item:add', e => openComment(e.detail.item));
+  pen.addEventListener('item:click', e => openComment(e.detail.item));
   pen.addEventListener('change', e => {
     refresh();
     // Chips render before the store has read, so a question can be opened while
@@ -580,6 +1294,7 @@ export function mount(opts = {}) {
       const r = pen.requests().find(x => x.key === open.key);
       if (r) field.value = opened = r.answer || '';
     }
+    if (e.detail.action === 'load') sweepUnfinished();
   });
   pen.addEventListener('save:error', () => bar.classList.add('failed'));
   if (pen.saveFailed()) bar.classList.add('failed');
@@ -591,9 +1306,9 @@ export function mount(opts = {}) {
       if (open) return close();
     }
     if (typing) {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && open && open.kind === 'ask') {
-        e.preventDefault();
-        step(1);
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && open) {
+        if (open.kind === 'ask') { e.preventDefault(); step(1); }
+        else if (open.kind === 'comment' && open.threaded) { e.preventDefault(); sendFollowUp(); }
       }
       return;
     }
@@ -651,6 +1366,7 @@ export function mount(opts = {}) {
       return () => commentListeners.delete(fn);
     },
     json: () => pen.review(),
+    thread,
     destroy() {
       live = false;
       leaveOpen();
@@ -661,6 +1377,7 @@ export function mount(opts = {}) {
       window.removeEventListener('scroll', hideTip, true);
       clickThroughRule?.remove();
       clickThroughRule = null;
+      disconnect();
       pen.destroy();
       bar.remove();
       pop.remove();

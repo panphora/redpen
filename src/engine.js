@@ -132,6 +132,13 @@ export function create(opts = {}) {
       const i = requests.findIndex(r => r.key === key);
       if (i >= 0) emit('request:click', { request: requestView(requests[i], i) });
     },
+    // The way back into a comment that already exists. Mirrors request:click,
+    // and it is the whole reason marker tags take clicks: without it a comment's
+    // popover opens once, while it is being written, and never again.
+    onNoteClick: id => {
+      const hit = findNote(id);
+      if (hit) emit('item:click', { item: { ...hit.item, target_id: hit.targetId } });
+    },
     addNote: (targetId, fields, gesture) => {
       const g = store.group(targetId);
       const t = targets.get(targetId);
@@ -247,6 +254,13 @@ export function create(opts = {}) {
           ...(n.elements ? { elements: n.elements } : {}),
           ...(n.truncated ? { truncated: n.truncated } : {}),
           ...(n.context ? { context: n.context } : {}),
+          // The conversation and whether it was retired are feedback, so they
+          // export. This list is a whitelist and review() reads notes through
+          // it, so a field missing here is missing from Copy JSON as well, however
+          // faithfully the store round-trips it. `unread` and `draft` stay out:
+          // one is local read-state and the other is unsent scratch.
+          ...(n.thread ? { thread: n.thread } : {}),
+          ...(n.resolved ? { resolved: n.resolved } : {}),
         })),
         strokes: g.strokes.map(s => {
           // a legacy stroke not yet normalized is already in px
@@ -311,6 +325,7 @@ export function create(opts = {}) {
       answered: asked.filter(v => v.answered).length,
       unanswered: asked.filter(v => !v.answered).length,
       orphaned: orphans().length,
+      resolved: items.filter(i => i.kind === 'comment' && i.resolved).length,
       ...(coords ? { coords } : {}),
       ...(Object.keys(bases).length ? { targets: bases } : {}),
       items,
@@ -376,6 +391,31 @@ export function create(opts = {}) {
       hit.item.text = text;
       store.save();
       emit('change', { action: 'note', item: hit.item });
+    },
+    // The STORED note, handed to a mutator rather than returned. `items()` gives
+    // out shallow copies, so a host that sets a field on one changes nothing the
+    // store will ever write, and the nested objects it does share by reference
+    // make that failure look like it works until it does not. Going through here
+    // also means the save and the event cannot be forgotten.
+    updateNote(id, fn) {
+      const hit = findNote(id);
+      if (!hit) return false;
+      fn(hit.item);
+      store.save();
+      emit('change', { action: 'note', item: hit.item });
+      return true;
+    },
+    // Every stored note, for a sweep that must not cost one write per note. The
+    // mutator returns true when it changed something, and a sweep that changed
+    // nothing writes nothing and emits nothing, so an ordinary page load does
+    // not rewrite the whole blob for no reason.
+    updateNotes(fn) {
+      let changed = false;
+      for (const [, g] of store.state.targets) for (const n of g.notes) if (fn(n)) changed = true;
+      if (!changed) return false;
+      store.save();
+      emit('change', { action: 'notes' });
+      return true;
     },
     remove(id) {
       const hit = findNote(id);
@@ -472,6 +512,11 @@ export function create(opts = {}) {
     data,
     review,
     layout: repaint,
+    // true once the stored blob has been read. Nothing may be WRITTEN before
+    // this: the store starts empty and a write from that window commits an empty
+    // blob over the real one. Gestures are already held off by applyMode; a host
+    // that writes notes from its own code has to ask.
+    loaded: () => loaded,
     // true once a write has failed: the notes are memory-only from here
     saveFailed: () => saveFailed,
     destroy() {

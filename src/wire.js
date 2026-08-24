@@ -7,56 +7,24 @@
 //   const review = RedpenReview.mount({});
 //   RedpenWire.attach(review);
 //
-// HTML never rides the wire. A local process answers with progress and edits the
+// HTML never rides the wire. A local process answers with words and edits the
 // FILE, and that edit reaches this page as an ordinary external change through
 // live-sync, which is why nothing here touches the DOM the agent is writing
 // about, and why a finished request is not the same event as a visible change.
+//
+// This file creates no DOM and owns no state about the conversation. It turns a
+// request into a payload, and a stream of wire frames into the four calls
+// review.js understands. That split is not decoration: picking a reply out of a
+// stream of status lines takes knowing that stdout is the only channel, that
+// frames arrive one at a time, that `rec.text` is sticky across state changes
+// and that the line is cut at 4 KB of bytes — every one of which is a fact about
+// the wire and none of which belongs in the review adapter.
 
-import { chrome, mark } from './mark.js';
-
-const STYLES = `
-  .rprWire { position: fixed; left: 14px; bottom: 14px; z-index: 99995; display: flex; align-items: center; gap: 8px;
-    font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace); font-size: 11.5px; letter-spacing: .06em;
-    max-width: min(420px, calc(100vw - 28px));
-    background: var(--card, #FDFDFC); border: 1px solid var(--line, #DCD8D2); border-radius: 7px; padding: 5px 8px; }
-  .rprWire[hidden] { display: none; }
-  .rprWire .rprWireDot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ink-faint, #8A857E); }
-  .rprWire.working .rprWireDot { background: var(--flag, #e5484d); animation: rprWirePulse 1.1s ease-in-out infinite; }
-  .rprWire.done .rprWireDot { background: #2f9e44; }
-  .rprWire.error .rprWireDot { background: var(--flag, #e5484d); }
-  .rprWire .rprWireText { color: var(--ink, #17110C); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rprWire button { font: inherit; letter-spacing: inherit; color: var(--ink-faint, #8A857E); background: none;
-    border: 0; border-radius: 5px; padding: 2px 6px; cursor: pointer; }
-  .rprWire button:hover { color: var(--ink, #17110C); background: var(--line, #DCD8D2); }
-  @keyframes rprWirePulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
-`;
-
-// In flight, so the pill stays up. `landing` is in here but NOT in CANCELLABLE:
-// clayjs stops accepting a cancel once the handler has finished writing (its
-// OPEN_STATES are sent and acked), so offering the button there is a button that
-// does nothing.
-// One attachment per page: a second would orphan the first pill and its wire
-// listener, and the first detach could then remove neither.
+// One attachment per page: a second would leave the first's subscription live
+// with nothing able to remove it.
 let attached = null;
 
-const WORKING = new Set(['sent', 'acked', 'landing']);
-const CANCELLABLE = new Set(['sent', 'acked']);
-
-const LABEL = {
-  sent: 'sending to the agent',
-  acked: 'the agent is working',
-  landing: 'waiting for the change',
-  done: 'done',
-  cancelled: 'cancelled',
-};
-
-function injectStyles() {
-  if (document.getElementById('rprWireStyle')) return;
-  const style = mark(document.createElement('style'));
-  style.id = 'rprWireStyle';
-  style.textContent = STYLES;
-  document.head.prepend(style);
-}
+const RUNNING = new Set(['sent', 'acked', 'landing']);
 
 // The key spliceProtected places an incoming disk frame by: synthetic identity
 // first, then data-id, then id. A dirty root with no usable key holds the whole
@@ -72,21 +40,145 @@ export function nearestKey(el) {
   return null;
 }
 
-// One item's projection, never the whole page's. The coordinate rule travels
-// with it because the item's geometry is expressed in that rule and reads as
-// fractions of the wrong box without it.
-export function payloadFor(item, projection) {
-  const selector = item.anchor && item.anchor.selector;
+/**
+ * What one status line turned out to be.
+ *
+ * A reply is one line on stdout that parses as a JSON object carrying a `redpen`
+ * key. The sentinel is what stops a handler that pipes `jq` or an HTTP response
+ * to stdout from having its tool output silently adopted as the agent's words.
+ *
+ *   {"redpen":1,"reply":"Cut the second clause."}
+ *
+ * `redpen` goes first by convention, because a line cut at the 4 KB limit keeps
+ * its head, and that head is the only thing the mangled rule can match on.
+ *
+ * → { kind: 'progress' | 'reply' | 'mangled' | 'broken', text, append }
+ */
+export function decode(line) {
+  const raw = String(line ?? '');
+  // The fast path, and almost every line takes it.
+  if (raw.trimStart()[0] !== '{') return { kind: 'progress', text: raw };
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // It was MEANT to be a reply and did not survive the trip. Saying so is the
+    // difference between a lost reply and an agent that had nothing to say.
+    if (/^\s*\{\s*"redpen"\s*:/.test(raw)) return { kind: 'mangled', text: raw };
+    return { kind: 'progress', text: raw };
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { kind: 'progress', text: raw };
+  if (!Object.prototype.hasOwnProperty.call(parsed, 'redpen')) return { kind: 'progress', text: raw };
+  // Marked as a reply and carrying nothing. A handler bug that eats the reply
+  // has to look different from silence.
+  if (typeof parsed.reply !== 'string' || !parsed.reply) return { kind: 'broken', text: raw };
+  return { kind: 'reply', text: parsed.reply, append: parsed.append === true };
+}
+
+/**
+ * One request's payload. `said` is ALWAYS the newest message, so a handler
+ * written before threads existed reads `payload.said` and gets the current
+ * instruction with no change at all.
+ *
+ * On turn one the result is byte-identical to what redpen sent before threads:
+ * `turn` and `thread` appear only from the second exchange onwards.
+ */
+export function payloadFor(request) {
+  const item = request.item || null;
+  const projection = request.projection || {};
+  const history = request.history || null;
+  // The item carries the thread too, and shipping it inside the payload as well
+  // would send the whole conversation twice.
+  const { thread, ...bare } = item || {};
+  const selector = item && item.anchor && item.anchor.selector;
   const el = selector ? document.querySelector(selector) : null;
   return {
     kind: 'comment',
     page: projection.page,
-    said: item.said,
-    item,
-    ...(item.target_id
+    said: request.ask,
+    ...(request.turn > 1 ? { turn: request.turn } : {}),
+    ...(history ? {
+      thread: history.pairs,
+      ...(history.earlier ? { earlier: history.earlier } : {}),
+    } : {}),
+    item: item ? bare : null,
+    // The coordinate rule travels with the item, because the item's geometry is
+    // expressed in that rule and reads as fractions of the wrong box without it.
+    ...(item && item.target_id
       ? { target: (projection.targets || {})[item.target_id] || null }
       : projection.coords ? { coords: projection.coords } : {}),
     ...(el ? { region: nearestKey(el) } : {}),
+  };
+}
+
+function createTransport(wire) {
+  let sink = null;
+  let off = null;
+  // Only ids this transport issued. A page can hold other wire traffic, and a
+  // frame for a request redpen never sent is not redpen's to interpret.
+  const mine = new Set();
+
+  function onFrame(rec, frame) {
+    if (!sink || !mine.has(rec.id)) return;
+    // Intermediates only. A terminal reaches the thread through handle.done,
+    // which clayjs settles for every outcome including the id clash that never
+    // emits at all — so a change to its emit pattern can cost progress text but
+    // can never leave a turn spinning forever.
+    if (RUNNING.has(rec.state)) sink.state(rec.id, rec.state);
+
+    // The frame is the exact new line. `rec.text` is sticky across later states,
+    // so a listener without the frame cannot tell a new line from the same line
+    // arriving again — which is why clayjs passes it, and why the fallback below
+    // is bounded to the one emit that can be a status line on an older build.
+    const line = frame && typeof frame.text === 'string'
+      ? frame.text
+      : (rec.state === 'acked' && rec.text ? rec.text : '');
+    if (!line) return;
+
+    const said = decode(line);
+    if (said.kind === 'reply') return void sink.reply(rec.id, said.text, { append: said.append });
+    if (said.kind === 'mangled') {
+      sink.progress(rec.id, said.text);
+      return void sink.note(rec.id, 'the agent sent a reply that did not survive the trip');
+    }
+    if (said.kind === 'broken') {
+      sink.progress(rec.id, said.text);
+      return void sink.note(rec.id, 'the agent marked a reply that carried no words');
+    }
+    sink.progress(rec.id, said.text);
+  }
+
+  return {
+    label: 'agent',
+    attach(s) {
+      sink = s;
+      off = wire.on(onFrame);
+    },
+    detach() {
+      off?.();
+      off = null;
+      sink = null;
+      mine.clear();
+      if (attached && attached.transport === this) attached = null;
+    },
+    // redpen mints the id, because clayjs emits the first frame from inside
+    // send(): a mapping built from the return value would be built too late to
+    // route it.
+    send(request) {
+      const handle = wire.send(payloadFor(request), { id: request.id, text: request.ask });
+      if (!handle || !handle.id) return null;
+      mine.add(handle.id);
+      handle.done.then(final => {
+        mine.delete(handle.id);
+        sink?.state(handle.id, final.state, final.error);
+      });
+      return { id: handle.id };
+    },
+    // clayjs refuses a cancel that arrived too late, so the rule lives there
+    // rather than being restated here where the two could quietly disagree.
+    cancel: id => wire.cancel(id),
   };
 }
 
@@ -107,79 +199,23 @@ export function attach(review, opts = {}) {
   }
 
   if (attached) {
-    console.warn('[redpen] the wire is already attached to this page');
+    // Attaching the same review twice is idempotent, which is what lets a page
+    // call attach() from more than one place without arranging who goes first.
+    if (attached.review !== review) console.warn('[redpen] the wire is already attached to this page');
     return attached;
   }
 
-  injectStyles();
-
-  const pill = chrome(document.createElement('div'));
-  pill.className = 'rprWire';
-  pill.hidden = true;
-  const dot = document.createElement('span');
-  dot.className = 'rprWireDot';
-  const text = document.createElement('span');
-  text.className = 'rprWireText';
-  const cancelBtn = document.createElement('button');
-  cancelBtn.textContent = 'cancel';
-  pill.append(dot, text, cancelBtn);
-  document.body.appendChild(pill);
-
-  let showing = null;
-  let clearTimer = null;
-
-  function render(rec) {
-    if (!rec) return;
-    showing = rec;
-    clearTimeout(clearTimer);
-    const working = WORKING.has(rec.state);
-    pill.hidden = false;
-    pill.classList.toggle('working', working);
-    pill.classList.toggle('done', rec.state === 'done');
-    pill.classList.toggle('error', rec.state === 'error');
-    // The status line is the agent's own words and clayjs never clears it, so a
-    // request that reaches landing or done would otherwise keep showing whatever
-    // it was doing three frames ago.
-    text.textContent = rec.state === 'error'
-      ? (rec.error || 'the agent failed')
-      : (CANCELLABLE.has(rec.state) && rec.text) || LABEL[rec.state] || rec.state;
-    cancelBtn.hidden = !CANCELLABLE.has(rec.state);
-    // A finished request stops being news. An error stays until the next one, so
-    // a failure cannot scroll past unread.
-    if (rec.state === 'done' || rec.state === 'cancelled') {
-      clearTimer = setTimeout(() => { pill.hidden = true; showing = null; }, 2500);
-    }
-  }
-
-  const off = wire.on(rec => {
-    // The newest request owns the pill: an older one still finishing would
-    // otherwise overwrite the state of the one just sent.
-    if (!showing || rec.id === showing.id || !WORKING.has(showing.state)) render(rec);
-  });
-
-  cancelBtn.addEventListener('click', () => {
-    if (showing && CANCELLABLE.has(showing.state)) wire.cancel(showing.id);
-  });
-
-  const send = (item, projection) => {
-    const handle = wire.send(payloadFor(item, projection), { text: item.said });
-    render({ id: handle.id, state: 'sent', text: '', error: null });
-    return handle;
-  };
-
-  // Its own subscription, and detach removes only that one: a second attachment,
-  // or a listener the page installed through mount(), must survive this one
-  // going away.
-  const offComment = review.onComment(typeof opts.onComment === 'function' ? opts.onComment : send);
+  const transport = opts.transport || createTransport(wire);
+  const disconnect = review.thread.connect(transport);
 
   attached = {
-    send,
+    review,
+    transport,
+    send: request => transport.send(request),
     detach() {
-      off();
-      offComment();
-      clearTimeout(clearTimer);
-      pill.remove();
-      document.getElementById('rprWireStyle')?.remove();
+      // review.js owns the pill and the conversation, so this is what takes both
+      // of them down; the transport's own detach clears `attached`.
+      disconnect();
       attached = null;
     },
   };

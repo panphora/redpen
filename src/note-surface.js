@@ -32,8 +32,18 @@ const SURFACE_CSS = `
   .laBox { position: absolute; border: 2px solid #e5484d; background: rgba(229, 72, 77, .12); box-sizing: border-box; }
   .laBox.el { background: rgba(229, 72, 77, .06); }
   .laBox.laPoint { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: #e5484d; border-color: #FDFDFC; }
-  .laBox .tag { position: absolute; top: -10px; left: -10px; background: #e5484d; color: #fff;
-    font: 700 11px/16px -apple-system, sans-serif; text-align: center; min-width: 16px; height: 16px; border-radius: 8px; padding: 0 3px; }
+  /* The tag carries no number. A marker's job is to say "something was said
+     here", and the id it used to show was only ever useful to whoever was
+     reading the export, which still carries it. Losing the digits also lets the
+     tag be the small round click target that reopens the comment. */
+  .laBox .tag { position: absolute; top: -7px; left: -7px; width: 13px; height: 13px; box-sizing: border-box;
+    background: #e5484d; border: 2px solid #FDFDFC; border-radius: 50%;
+    pointer-events: auto; cursor: pointer; }
+  /* A point marker is already a dot, so it is its own click target rather than
+     wearing a second one. */
+  .laBox.laPoint { pointer-events: auto; cursor: pointer; }
+  .laBox .tag:hover, .laBox.laPoint:hover { background: #17110C; }
+  .laBox .tag.unread, .laBox.laPoint.unread { box-shadow: 0 0 0 3px rgba(229, 72, 77, .4); }
   .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
   .laOverlay { position: fixed; inset: 0; z-index: 99992; display: none; touch-action: none; }
   .laReqs { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99991; pointer-events: none; }
@@ -69,18 +79,41 @@ function chrome(el, cls, id) {
   return markChrome(el);
 }
 
-export function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick }) {
+// What a marker says when you hover it, now that it has no number to read. The
+// comment's own words are the only thing that identifies it on the page.
+function markerTitle(note) {
+  const said = (note.text || '').trim();
+  if (!said) return 'an empty comment';
+  return said.length > 72 ? said.slice(0, 71) + '…' : said;
+}
+
+export function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick, onNoteClick }) {
   const describe = identify || defaultDescribe;
   injectSurfaceStyles();
 
   const markers = chrome(document.createElement('div'), 'laMarkers', 'laMarkers');
   mount.appendChild(markers);
 
-  // Request chips are the one piece of engine chrome that takes clicks, so they
-  // need their own layer: .laMarkers is pointer-events:none and every note marker
-  // in it is unclickable by design. This layer sits BELOW the capture overlay, so
-  // turning on note mode makes the chips inert — otherwise the first click of a
-  // volunteered comment would land on a chip and file a note about the chip.
+  // Delegated, because layout() wipes and rebuilds every marker on every scroll.
+  // A handler attached per box would be re-attached dozens of times a second and
+  // would leak the ones layout() already removed.
+  //
+  // .laMarkers stays pointer-events:none and so does the marker body. Only the
+  // small tag (and a point marker, which IS its tag) opts back in, so a click
+  // anywhere else still reaches the page being reviewed.
+  markers.addEventListener('click', e => {
+    const hit = e.target.closest('[data-la-note]');
+    if (!hit) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onNoteClick?.(Number(hit.dataset.laNote));
+  });
+
+  // Request chips need their own layer because they sit at a different place on
+  // the page than the marker they belong to. Like the marker tags above, this
+  // layer sits BELOW the capture overlay, so turning on note mode makes both
+  // inert — otherwise the first click of a volunteered comment would land on a
+  // chip or an old marker and file a note about redpen's own chrome.
   const reqs = chrome(document.createElement('div'), 'laReqs', 'laReqs');
   mount.appendChild(reqs);
 
@@ -147,15 +180,19 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
       const show = visible ? visible(id) : true;
       if (!show) continue;
       for (const note of g.notes) {
+        // A resolved comment leaves the page entirely. It is still in the store
+        // and still exports; the bar's resolved list is the way back to it.
+        if (note.resolved) continue;
         // point markers keep the .laBox class so the clear at the top of layout()
         // sweeps them too
         if (note.kind === 'point' && note.point) {
           const p = screenPoint(t, note);
           if (!p) continue;
           const dot = document.createElement('div');
-          dot.className = 'laBox laPoint';
+          dot.className = 'laBox laPoint' + (note.unread ? ' unread' : '');
           dot.dataset.laTarget = id;
-          dot.innerHTML = `<span class="tag">${note.id}</span>`;
+          dot.dataset.laNote = note.id;
+          dot.title = markerTitle(note);
           placePoint(dot, p.x, p.y);
           markers.appendChild(dot);
           continue;
@@ -165,7 +202,11 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
         const box = document.createElement('div');
         box.className = 'laBox' + (note.kind === 'element' ? ' el' : '');
         box.dataset.laTarget = id;
-        box.innerHTML = `<span class="tag">${note.id}</span>`;
+        box.dataset.laNote = note.id;
+        const tag = document.createElement('span');
+        tag.className = 'tag' + (note.unread ? ' unread' : '');
+        tag.title = markerTitle(note);
+        box.appendChild(tag);
         place(box, r);
         markers.appendChild(box);
       }
