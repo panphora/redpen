@@ -65,7 +65,12 @@ export function decode(line) {
   } catch {
     // It was MEANT to be a reply and did not survive the trip. Saying so is the
     // difference between a lost reply and an agent that had nothing to say.
-    if (/^\s*\{\s*"redpen"\s*:/.test(raw)) return { kind: 'mangled', text: raw };
+    // Anywhere in what survived, not only at the head: `redpen` first is a
+    // convention, and a truncated reply that put it second was being shown as a
+    // giant line of raw JSON with no sign that a reply had been lost. The line
+    // already starts with `{` and already failed to parse, so a false positive
+    // here costs a wrong note rather than a wrong reply.
+    if (/"redpen"\s*:/.test(raw)) return { kind: 'mangled', text: raw };
     return { kind: 'progress', text: raw };
   }
 
@@ -170,10 +175,16 @@ function createTransport(wire) {
       const handle = wire.send(payloadFor(request), { id: request.id, text: request.ask });
       if (!handle || !handle.id) return null;
       mine.add(handle.id);
-      handle.done.then(final => {
-        mine.delete(handle.id);
-        sink?.state(handle.id, final.state, final.error);
-      });
+      // The rejection arm matters as much as the other one: an unsettled `done`
+      // leaves review.js holding the wire for a request that will never end, and
+      // an error nobody reports is the one shape that cannot be waited out.
+      handle.done.then(
+        final => { mine.delete(handle.id); sink?.state(handle.id, final.state, final.error); },
+        err => {
+          mine.delete(handle.id);
+          sink?.state(handle.id, 'error', err && err.message ? err.message : 'the wire failed');
+        },
+      );
       return { id: handle.id };
     },
     // clayjs refuses a cancel that arrived too late, so the rule lives there

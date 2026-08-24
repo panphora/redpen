@@ -205,10 +205,22 @@ export function createStore({ key, storage, onLoad, onSaveError }) {
     return { v: 3, counter: state.counter, ...answers, targets };
   }
 
+  // Resolves once nothing is waiting to be written. `flush` chains itself, so a
+  // promise taken mid-write settles after the LAST write rather than the one in
+  // flight. Polling the two real flags beats any bookkeeping here: there is no
+  // waiter list to leak, and no path that can forget to settle it.
+  function flushed() {
+    return new Promise(resolve => {
+      const tick = () => (writing || dirty ? setTimeout(tick, 0) : resolve());
+      tick();
+    });
+  }
+
   return {
     state,
     group,
     loaded: () => loaded,
+    flushed,
     answer: key => state.answers[key] || null,
     setAnswer(key, record) {
       state.answers[key] = record;

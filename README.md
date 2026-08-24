@@ -242,7 +242,7 @@ review.thread.send(noteId, text)     // → the turn, or null
 review.thread.open(noteId)           // open that comment's popover
 review.thread.of(noteId)             // a frozen copy, for hosts and tests
 review.thread.resolve(noteId, on)    // retire a comment, or bring it back
-review.thread.resume(noteId, turnId) // send a turn a reload left queued
+review.thread.resume(noteId, turnId) // send a turn a reload left parked
 review.thread.connected() / .busy()
 ```
 
@@ -271,8 +271,17 @@ loses the first one's change. A send while something is running is stored as a
 
 A queued turn drains automatically **while the page is live, but not after a
 reload**: nobody then knows whether the earlier request's edit landed, and sending
-automatically could ask for the same change twice. It renders with a send button
-and waits.
+automatically could ask for the same change twice. On load it becomes `parked`, a
+state of its own rather than `queued` plus a flag, and renders with a send button
+that `thread.resume` is behind. Everything you typed is still there; only the
+sending waits for you.
+
+**Known limitation: the rule is per page, not per file.** Two tabs open on the
+same document each hold their own one-request lock, so both can have an agent
+running against one file at the same time, and the second write silently loses the
+first one's change. A page cannot see the other tab's request, and a guard here
+would only ever be a guess. The durable answer is serialisation in `wire serve`,
+where the file actually is, and that is where it will go.
 
 ### Sending is asymmetric, on purpose
 
@@ -349,7 +358,9 @@ appear only from the second exchange onwards.
 
 `{you, agent}` pairs, because the pairing is the information and it reads
 correctly pasted into a prompt with no legend. A failed exchange carries `failed`
-instead of `agent`. Bounds, on the payload only: the last 8 exchanges with an
+instead of `agent`. An exchange that finished and said nothing carries
+`done: true`: that is every handler written before replies existed, and calling
+it a failure invites the next agent to redo or undo work that actually landed. Bounds, on the payload only: the last 8 exchanges with an
 `earlier` count, each string at 2000 characters except the newest `you`, which is
 never cut. Progress lines never travel; they are the agent's own output coming
 back at it.
@@ -479,9 +490,10 @@ unsent scratch.
                 "progress": ["reading the file"] } ] }
 ```
 
-`state` is `queued | sent | acked | landing | done | error | cancelled | unknown`.
-The middle six are the wire's; `queued` and `unknown` are redpen's, the second
-meaning the page was closed while the request was still running. `ask` is frozen at
+`state` is `queued | parked | sent | acked | landing | done | error | cancelled |
+unknown`. The middle six are the wire's; `queued`, `parked` and `unknown` are
+redpen's: parked is a queued turn a reload found and is waiting for you to send,
+and unknown means the page was closed while the request was still running. `ask` is frozen at
 send time and never rewritten, so a reworded comment cannot silently claim the
 agent was answering something it never saw. Caps, so a chatty handler cannot grow a
 blob that is rewritten on every keystroke: a progress line stores at 400

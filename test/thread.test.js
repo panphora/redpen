@@ -89,7 +89,17 @@ function fakeTransport({ refuse = false } = {}) {
 }
 
 // The store's read is async and a turn written before it lands is erased by it.
-const loaded = () => new Promise(r => setTimeout(r, 50));
+// Wait on the engine's own signal rather than a timer: a fixed sleep is a bet on
+// how long IndexedDB takes to open, and the first open on a cold profile loses
+// that bet, which shows up as tests failing in the shape of product bugs.
+const loaded = () => new Promise(resolve => {
+  if (review.pen.loaded()) return resolve();
+  review.pen.addEventListener('change', function once(e) {
+    if (!e.detail || e.detail.action !== 'load') return;
+    review.pen.removeEventListener('change', once);
+    resolve();
+  });
+});
 
 const threadOf = id => review.thread.of(id);
 const onlyNote = () => review.json().items.find(i => i.kind === 'comment');
@@ -229,11 +239,14 @@ it('a thread survives a store round trip without bumping the blob version', asyn
     note.thread = [{ id: 't1', ask: 'shorten this', state: 'done', reply: 'cut the second clause' }];
   });
 
-  await new Promise(r => setTimeout(r, 50));
+  // Wait for the write to reach the store, not for a fixed number of
+  // milliseconds: a cold IndexedDB open takes longer than any sleep worth
+  // writing, and the note simply was not there yet when the reload read it.
+  await review.pen.flushed();
   review.destroy();
 
   review = mount({ key: 'test:roundtrip' });
-  await new Promise(r => setTimeout(r, 50));
+  await loaded();
 
   const item = review.json().items.find(i => i.kind === 'comment');
   expect(item.thread.length).to.equal(1);
@@ -479,7 +492,7 @@ it('a queued turn found after a reload waits to be sent by hand', async () => {
   review.thread.connect(second);
   await loaded();
 
-  expect(threadOf(onlyNote().id)[1].state).to.equal('queued');
+  expect(threadOf(onlyNote().id)[1].state).to.equal('parked');
   expect(second.sent.length).to.equal(0);
 });
 
@@ -631,7 +644,10 @@ it('collapses the progress trail, and shows the newest line while it works', asy
 it('a queued turn left by a reload waits behind a send button', async () => {
   const first = await threaded('test:ui-stalled');
   review.thread.send(onlyNote().id, 'and drop the date');
-  await loaded();
+  // The store writes behind the gesture, so the queued turn is in memory well
+  // before it is on disk. This test is about what a RELOAD finds, so it has to
+  // wait for the write and not merely for the load that preceded it.
+  await review.pen.flushed();
   review.destroy();
 
   review = mount({ key: 'test:ui-stalled' });

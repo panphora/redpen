@@ -517,6 +517,10 @@ export function create(opts = {}) {
     // blob over the real one. Gestures are already held off by applyMode; a host
     // that writes notes from its own code has to ask.
     loaded: () => loaded,
+    // Resolves once every pending write has landed. The store writes behind the
+    // gesture that caused it, so "I typed it" and "it is on disk" are different
+    // moments, and anything that tears the page down between the two loses it.
+    flushed: () => store.flushed(),
     // true once a write has failed: the notes are memory-only from here
     saveFailed: () => saveFailed,
     destroy() {

@@ -105,11 +105,21 @@ function fakeWire() {
 // the id redpen minted for the one request it sent
 const only = wire => wire.sent.find(s => s.id).id;
 
-// The store's read is async, and a turn written before it lands would be erased
-// by it, so nothing reaches the wire until it has. A synthetic pointer event
-// still reaches the capture overlay while it is display:none, which is why these
-// tests can make a note before this resolves and a person cannot.
-const settled = () => new Promise(r => setTimeout(r, 50));
+// The store's read is async and a turn written before it lands is erased by it.
+// Wait on the engine's own signal rather than a timer: a fixed sleep is a bet on
+// how long IndexedDB takes to open, and the first open on a cold profile loses
+// that bet, which shows up as tests failing in the shape of product bugs.
+const settled = () => new Promise(resolve => {
+  if (review.pen.loaded()) return resolve();
+  review.pen.addEventListener('change', function once(e) {
+    if (!e.detail || e.detail.action !== 'load') return;
+    review.pen.removeEventListener('change', once);
+    resolve();
+  });
+});
+// A synthetic pointer event still reaches the capture overlay while it is
+// display:none, which is why a test can make a note before this resolves and a
+// person cannot.
 
 beforeEach(() => {
   localStorage.clear();
@@ -330,9 +340,14 @@ it('keeps every comment listener separate', async () => {
   expect(fromMount.length).to.equal(1);
   expect(wire.sent.length).to.equal(1);
 
+  // Settle it before detaching: a disconnect holds until the request in flight
+  // actually ends, so that a second agent is never handed a file the first one
+  // is still writing. The assertions read a boolean rather than the element,
+  // because a DOM node as the actual value wedges the test runner when it fails.
+  await wire.finish(only(wire), 'done');
   first.detach();
-  expect(document.querySelector('.rprWire')).to.equal(null);
-  expect(document.getElementById('rprWireStyle')).to.equal(null);
+  expect(!!document.querySelector('.rprWire')).to.equal(false);
+  expect(!!document.getElementById('rprWireStyle')).to.equal(false);
 
   tapComment();
   say('after detaching');
@@ -340,6 +355,69 @@ it('keeps every comment listener separate', async () => {
   // The page's own listener is untouched; only the transport went away.
   expect(fromMount.length).to.equal(2);
   expect(wire.sent.length).to.equal(1);
+});
+
+// A detach in the middle of a request. Letting it through would leave the
+// agent's write landing on a file a second attachment already believes it owns,
+// so the disconnect waits the request out and refuses new sends while it does.
+it('holds a detach until the request in flight ends', async () => {
+  const wire = fakeWire();
+  window.clay = { wire };
+  review = mount({ key: 'test:hold' });
+  await settled();
+  const link = attach(review);
+
+  tapComment();
+  say('rewrite the intro');
+  footBtn('done').click();
+  const id = only(wire);
+
+  link.detach();
+  expect(!!document.querySelector('.rprWire')).to.equal(true);
+
+  // Refused rather than queued: a queue would drain into a transport that is
+  // already on its way out.
+  tapComment();
+  say('and the heading');
+  footBtn('done').click();
+  expect(wire.sent.length).to.equal(1);
+
+  await wire.finish(id, 'done');
+  expect(!!document.querySelector('.rprWire')).to.equal(false);
+});
+
+// A status line used to rebuild the whole conversation, which closed the
+// progress trail you had just opened and dragged the scroll back to the bottom.
+it('redraws only the turn that changed, and keeps an open trail open', async () => {
+  const wire = fakeWire();
+  window.clay = { wire };
+  review = mount({ key: 'test:redraw' });
+  await settled();
+  attached = attach(review);
+
+  tapComment();
+  say('make this shorter');
+  footBtn('done').click();
+  const noteId = review.json().items.find(i => i.kind === 'comment').id;
+  await wire.finish(only(wire), 'done');
+
+  review.thread.send(noteId, 'and the date');
+  const second = wire.sent[wire.sent.length - 1].id;
+  wire.status(second, 'reading index.htmlclay');
+
+  review.thread.open(noteId);
+  const blocks = [...document.querySelectorAll('.rprTurn')];
+  expect(blocks.length).to.equal(2);
+  const trail = document.querySelector('.rprTurn:last-child .rprTrail');
+  trail.open = true;
+
+  wire.status(second, 'rewriting the intro');
+  // Booleans rather than the elements themselves: a DOM node as the actual value
+  // wedges the test runner when the assertion fails.
+  expect(document.querySelectorAll('.rprTurn')[0] === blocks[0]).to.equal(true);
+  expect(document.querySelector('.rprTurn:last-child .rprTrail') === trail).to.equal(true);
+  expect(trail.open).to.equal(true);
+  expect(trail.querySelectorAll('p').length).to.equal(2);
 });
 
 // ---------- reading one status line ----------

@@ -360,10 +360,17 @@
       const answers = Object.keys(state.answers).length ? { answers: state.answers } : {};
       return { v: 3, counter: state.counter, ...answers, targets };
     }
+    function flushed() {
+      return new Promise((resolve2) => {
+        const tick = () => writing || dirty ? setTimeout(tick, 0) : resolve2();
+        tick();
+      });
+    }
     return {
       state,
       group,
       loaded: () => loaded,
+      flushed,
       answer: (key2) => state.answers[key2] || null,
       setAnswer(key2, record) {
         state.answers[key2] = record;
@@ -1732,6 +1739,10 @@
       // blob over the real one. Gestures are already held off by applyMode; a host
       // that writes notes from its own code has to ask.
       loaded: () => loaded,
+      // Resolves once every pending write has landed. The store writes behind the
+      // gesture that caused it, so "I typed it" and "it is on disk" are different
+      // moments, and anything that tears the page down between the two loses it.
+      flushed: () => store.flushed(),
       // true once a write has failed: the notes are memory-only from here
       saveFailed: () => saveFailed,
       destroy() {

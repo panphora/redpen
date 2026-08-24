@@ -419,7 +419,7 @@ export function mount(opts = {}) {
   // has a request on the wire, versus is simply not finished. `queued` is the
   // difference, and every rule below cares which one it is looking at.
   const RUNNING = new Set(['sent', 'acked', 'landing']);
-  const UNFINISHED = new Set(['queued', 'sent', 'acked', 'landing']);
+  const UNFINISHED = new Set(['queued', 'parked', 'sent', 'acked', 'landing']);
 
   // redpen mints the request id rather than taking one back from the transport,
   // because clayjs emits the first frame synchronously from inside send(): a
@@ -431,6 +431,7 @@ export function mount(opts = {}) {
 
   let transport = null;
   let inflight = null;             // the one request id on the wire, or null
+  let detachWhenIdle = false;      // a disconnect waiting out the request in flight
   const byRequest = new Map();     // request id -> { noteId, turnId }
 
   const now = () => new Date().toISOString();
@@ -469,6 +470,10 @@ export function mount(opts = {}) {
     });
     byRequest.delete(requestId);
     if (inflight === requestId) inflight = null;
+    // A teardown that waited for this request finishes here rather than draining
+    // into it. Checked first: draining would start the next program on a review
+    // that has already asked to be disconnected.
+    if (detachWhenIdle && !inflight) { disconnect(); return ok; }
     // Drained even when no turn was found. A comment discarded mid-request
     // leaves a request nothing can be written to, and holding the queue behind
     // it would wedge every later send for the life of the page.
@@ -502,7 +507,7 @@ export function mount(opts = {}) {
     reply(requestId, text, opts = {}) {
       const said = String(text ?? '');
       if (!said) return false;
-      let rang = false;
+      let rang = false, back = false;
       const ok = withTurn(requestId, (turn, note) => {
         turn.reply = cut(opts.append && turn.reply ? turn.reply + said : said, CAP.reply);
         turn.repliedAt = now();
@@ -510,6 +515,10 @@ export function mount(opts = {}) {
         // while you were elsewhere: the pill for a moment, this ring on the
         // marker, and the stored flag that survives a reload. Reading the thread
         // is what clears it, so an open popover was already read.
+        // Typing a follow-up already brings a resolved comment back; so does
+        // being answered. You retired it before you knew there were words
+        // coming, and words you cannot reach are words you did not get.
+        if (note.resolved) { delete note.resolved; back = true; }
         if (open && open.kind === 'comment' && open.id === note.id) return;
         rang = !note.unread;
         note.unread = true;
@@ -517,7 +526,9 @@ export function mount(opts = {}) {
       // Only when the ring actually appeared. Markers are re-measured and
       // rebuilt from scratch on every layout, so repainting for a reply to a
       // marker that is already ringing is work for no visible change.
-      if (rang) pen.layout();
+      // `back` as well as `rang`: a comment returning from the resolved list
+      // has no marker at all yet, so the layout that draws it is not optional.
+      if (rang || back) pen.layout();
       return ok;
     },
     // The transport's own remark about an exchange, which is how a mangled reply
@@ -540,6 +551,10 @@ export function mount(opts = {}) {
       const you = last ? t.ask : cut(t.ask, CAP.say);
       if (t.reply) return { you, agent: cut(t.reply, CAP.say) };
       if (UNFINISHED.has(t.state)) return { you };
+      // Finished, edited the file, said nothing. That is every handler written
+      // before replies existed, and calling it a failure invites the next agent
+      // to redo or undo work that actually landed.
+      if (t.state === 'done') return { you, done: true };
       return { you, failed: t.error || 'this one did not finish' };
     });
     let earlier = 0;
@@ -556,7 +571,7 @@ export function mount(opts = {}) {
   // change. Tap, comment, tap the next thing is redpen's ordinary rhythm, which
   // makes that a likely path rather than an exotic one.
   function sendTurn(noteId, said) {
-    if (!transport) return null;
+    if (!transport || detachWhenIdle) return null;
     // The store starts empty and fills a few milliseconds later. A turn written
     // in that window is erased by the read that follows it.
     if (!pen.loaded()) return null;
@@ -614,14 +629,22 @@ export function mount(opts = {}) {
 
     const projection = pen.review();
     const history = historyFor(thread.slice(0, at + 1));
-    const ok = transport.send({
-      id: requestId,
-      ask: thread[at].ask,
-      turn: at + 1,
-      item: projection.items.find(i => i.kind === 'comment' && i.id === noteId) || null,
-      projection,
-      ...(history ? { history } : {}),
-    });
+    let ok = null;
+    try {
+      ok = transport.send({
+        id: requestId,
+        ask: thread[at].ask,
+        turn: at + 1,
+        item: projection.items.find(i => i.kind === 'comment' && i.id === noteId) || null,
+        projection,
+        ...(history ? { history } : {}),
+      });
+    } catch (err) {
+      // Unguarded, a throw here left `inflight` pinned to a request that could
+      // never settle, and every later comment queued behind it for the life of
+      // the page, with nothing shown anywhere.
+      console.warn('[review] the transport threw', err);
+    }
     // A transport that refuses says so on the thread. It is an outcome, not an
     // exception: there is nowhere better for it to go, and the exchange is
     // sitting right there waiting to be read.
@@ -633,7 +656,7 @@ export function mount(opts = {}) {
   // what you asked for. After a reload nobody knows whether the earlier
   // request's edit landed, and sending then could ask for the same change twice.
   function drain() {
-    if (!transport || inflight) return;
+    if (!transport || inflight || detachWhenIdle) return;
     let pick = null;
     for (const note of pen.items()) {
       for (const turn of note.thread || []) {
@@ -655,9 +678,12 @@ export function mount(opts = {}) {
       let changed = false;
       for (const turn of note.thread) {
         // A turn that was only ever queued still has everything you typed and
-        // was never sent, so it is marked rather than terminated: the thread
-        // gives it a send button and waits for you to press it.
-        if (turn.state === 'queued' && !turn.stalled) { turn.stalled = true; changed = true; continue; }
+        // was never sent, so it is parked rather than terminated: the thread
+        // gives it a send button and waits for you to press it. `stalled` is the
+        // flag this state replaced, deleted here so a turn stored by an older
+        // build arrives in the new shape.
+        if (turn.state === 'queued') { turn.state = 'parked'; delete turn.stalled; changed = true; continue; }
+        if (turn.state === 'parked') { if (turn.stalled) { delete turn.stalled; changed = true; } continue; }
         if (!RUNNING.has(turn.state)) continue;
         turn.state = 'unknown';
         turn.endedAt = now();
@@ -670,11 +696,25 @@ export function mount(opts = {}) {
   // Held rather than only handed back, because destroy() has to take the
   // transport down too: a subscription outliving the review it feeds writes into
   // an engine that is already gone.
-  function disconnect() {
+  //
+  // A running request is still writing the file, and clearing the wire's one-at-
+  // a-time lock here is what let a reattached page start a second program
+  // alongside it, with the second write silently losing the first. The teardown
+  // waits for the terminal frame instead. Nothing new goes out meanwhile:
+  // `transport` stays set, so `connect` refuses a second one and `sendTurn`
+  // refuses outright rather than queueing work that would drain into a detach.
+  //
+  // `force` is destroy's: the engine is going away, so a subscription that
+  // outlived it would write into nothing. That is the one path that still drops
+  // the lock, and the durable answer to it is serialisation in htmlclay, where
+  // the file is, not another guard in a page that can be closed.
+  function disconnect(force = false) {
     if (!transport) return;
+    if (inflight && !force) { detachWhenIdle = true; return; }
     const t = transport;
     transport = null;
     inflight = null;
+    detachWhenIdle = false;
     byRequest.clear();
     dropPill();
     t.detach?.();
@@ -701,7 +741,7 @@ export function mount(opts = {}) {
       if (!transport || inflight) return false;
       const note = noteById(noteId);
       const turn = (note && note.thread || []).find(t => t.id === turnId);
-      if (!turn || turn.state !== 'queued') return false;
+      if (!turn || turn.state !== 'parked') return false;
       dispatch(noteId, turnId);
       return true;
     },
@@ -740,6 +780,10 @@ export function mount(opts = {}) {
 
   const TURN_LABEL = {
     queued: 'waiting for the wire',
+    // Its own state rather than `queued` plus a flag. Two things that had to be
+    // read together is what let drain() pick up a turn the reload had parked and
+    // send it with nobody's hand on the button.
+    parked: 'waiting for you to send it',
     sent: 'sending to the agent',
     acked: 'the agent is working',
     landing: 'waiting for the change',
@@ -796,13 +840,17 @@ export function mount(opts = {}) {
     }
   }
 
-  function trailFor(turn) {
+  // Reuses the <details> it is handed rather than building a fresh one, because
+  // this is the only element in a turn a person can have opened, and a
+  // replacement always arrives closed. Emptying it leaves `open` alone.
+  function trailFor(turn, box) {
     const n = turn.progress.length + (turn.progressDropped || 0);
-    const box = el('details', 'rprTrail');
-    box.appendChild(el('summary', null, `${n} progress line${n === 1 ? '' : 's'}`));
-    if (turn.progressDropped) box.appendChild(el('p', null, `…${turn.progressDropped} earlier`));
-    for (const line of turn.progress) box.appendChild(el('p', null, line));
-    return box;
+    const trail = box || el('details', 'rprTrail');
+    trail.textContent = '';
+    trail.appendChild(el('summary', null, `${n} progress line${n === 1 ? '' : 's'}`));
+    if (turn.progressDropped) trail.appendChild(el('p', null, `…${turn.progressDropped} earlier`));
+    for (const line of turn.progress) trail.appendChild(el('p', null, line));
+    return trail;
   }
 
   function stateRow(turn) {
@@ -811,15 +859,15 @@ export function mount(opts = {}) {
     // A queued turn drains itself while the page is live. One found after a
     // reload does not, because nobody knows whether the request it was waiting
     // behind ever landed, so it asks rather than repeating a change.
-    const stalled = turn.state === 'queued' && turn.stalled;
-    if (!label && !cancellable && !stalled) return null;
+    const parked = turn.state === 'parked';
+    if (!label && !cancellable && !parked) return null;
     const row = el('div', 'rprTurnState');
     row.append(el('span', ('rprDot ' + dotClass(turn.state)).trim()), el('span', null, label));
     if (cancellable) {
       const btn = el('button', null, 'cancel');
       btn.addEventListener('click', () => transport.cancel(turn.request));
       row.append(btn);
-    } else if (stalled) {
+    } else if (parked) {
       const btn = el('button', null, 'send');
       btn.addEventListener('click', () => { thread.resume(openNoteId(), turn.id); renderThread(); });
       row.append(btn);
@@ -830,34 +878,94 @@ export function mount(opts = {}) {
   const openNoteId = () => (open && open.kind === 'comment' ? open.id : null);
   const transportCan = name => !!(transport && typeof transport[name] === 'function');
 
-  function renderThread() {
+  // A status line lands every few hundred milliseconds, and rebuilding the whole
+  // conversation for each one closed every open progress trail and dragged the
+  // scroll back to the bottom while you were reading turn one. Only the turn
+  // that actually changed is redrawn; the rest is left standing.
+  let threadFor = null;
+  const turnBlocks = new Map();   // turnId -> the block standing in the box
+  const turnTrails = new Map();   // turnId -> its progress <details>
+  const turnDrawn = new Map();    // turnId -> what it looked like when last drawn
+
+  // Everything about a turn that can change after it is written. `ask` is frozen
+  // at send time, which is why it is deliberately not in here.
+  const turnSig = turn => [
+    turn.state, turn.repliedAt || '', turn.reply || '', turn.note || '',
+    (turn.progress || []).length, turn.progressDropped || 0,
+  ].join('\u0000');
+
+  function forgetThread() {
     threadBox.textContent = '';
+    turnBlocks.clear();
+    turnTrails.clear();
+    turnDrawn.clear();
+  }
+
+  function fillTurn(block, turn, them) {
+    const trail = turn.progress && turn.progress.length
+      ? trailFor(turn, turnTrails.get(turn.id))
+      : null;
+    if (trail) turnTrails.set(turn.id, trail);
+    block.textContent = '';
+    block.append(whoRow('you', turn.at));
+    paragraphs(block, turn.ask, 'rprSaid');
+    if (turn.reply) {
+      block.append(whoRow(them, turn.repliedAt));
+      paragraphs(block, turn.reply, 'rprReply');
+    }
+    if (turn.note) block.appendChild(el('p', 'rprMangled', turn.note));
+    if (trail) block.appendChild(trail);
+    const state = stateRow(turn);
+    if (state) block.appendChild(state);
+    // What it is doing right now, spelled out under the state line. The trail
+    // above holds the rest and stays collapsed.
+    if (RUNNING.has(turn.state) && turn.progress && turn.progress.length) {
+      block.appendChild(el('p', 'rprNow', turn.progress[turn.progress.length - 1]));
+    }
+  }
+
+  function renderThread() {
     const id = openNoteId();
+    if (id !== threadFor) { forgetThread(); threadFor = id; }
     if (id == null) return (threadBox.hidden = true);
     const turns = thread.of(id);
     threadBox.hidden = !turns.length;
-    if (!turns.length) return;
+    if (!turns.length) return void forgetThread();
+
+    // Sticky only when you are already at the end. Having scrolled up to read is
+    // a statement that you do not want to be dragged back down.
+    const stick = threadBox.scrollHeight - threadBox.scrollTop - threadBox.clientHeight < 24;
     const them = (transport && transport.label) || 'agent';
+    const live = new Set();
+    let grew = false;
+
     for (const turn of turns) {
-      const block = el('div', 'rprTurn');
-      block.append(whoRow('you', turn.at));
-      paragraphs(block, turn.ask, 'rprSaid');
-      if (turn.reply) {
-        block.append(whoRow(them, turn.repliedAt));
-        paragraphs(block, turn.reply, 'rprReply');
+      live.add(turn.id);
+      let block = turnBlocks.get(turn.id);
+      if (!block) {
+        block = el('div', 'rprTurn');
+        turnBlocks.set(turn.id, block);
+        grew = true;
       }
-      if (turn.note) block.appendChild(el('p', 'rprMangled', turn.note));
-      if (turn.progress && turn.progress.length) block.appendChild(trailFor(turn));
-      const state = stateRow(turn);
-      if (state) block.appendChild(state);
-      // What it is doing right now, spelled out under the state line. The trail
-      // above holds the rest and stays collapsed.
-      if (RUNNING.has(turn.state) && turn.progress && turn.progress.length) {
-        block.appendChild(el('p', 'rprNow', turn.progress[turn.progress.length - 1]));
+      const drawn = turnSig(turn) + '\u0000' + them;
+      if (turnDrawn.get(turn.id) !== drawn) {
+        fillTurn(block, turn, them);
+        turnDrawn.set(turn.id, drawn);
       }
-      threadBox.appendChild(block);
+      // Turns only ever arrive at the end, so appending the ones that are not in
+      // the box yet keeps the order without moving anything already placed.
+      if (block.parentNode !== threadBox) threadBox.appendChild(block);
     }
-    scrollThreadToEnd();
+
+    for (const [turnId, block] of turnBlocks) {
+      if (live.has(turnId)) continue;
+      block.remove();
+      turnBlocks.delete(turnId);
+      turnTrails.delete(turnId);
+      turnDrawn.delete(turnId);
+    }
+
+    if (stick || grew) scrollThreadToEnd();
   }
 
   // A hidden element measures zero, so this does nothing until the popover is on
@@ -902,6 +1010,15 @@ export function mount(opts = {}) {
     pillAt = null;
   }
 
+  // Hidden rather than removed: the next request reuses the element. dropPill
+  // takes it down for good, which is what a disconnect wants and a discarded
+  // comment does not.
+  function hidePill() {
+    clearTimeout(pillTimer);
+    if (pill) pill.hidden = true;
+    pillAt = null;
+  }
+
   function renderPill(noteId, turnId) {
     if (!pill) return;
     const turn = thread.of(noteId).find(t => t.id === turnId);
@@ -924,7 +1041,7 @@ export function mount(opts = {}) {
     // A finished request stops being news. An error stays until the next one, so
     // a failure cannot scroll past unread.
     if (turn.state === 'done' || turn.state === 'cancelled') {
-      pillTimer = setTimeout(() => { if (pill) { pill.hidden = true; pillAt = null; } }, 2500);
+      pillTimer = setTimeout(hidePill, 2500);
     }
   }
 
@@ -985,6 +1102,9 @@ export function mount(opts = {}) {
     leftBtn.hidden = false;
     leftBtn.textContent = '‹ prev';
     rightBtn.textContent = 'next ›';
+    // Reset, not just unhidden: a threaded comment leaves it saying `send`, and
+    // in here ⌘↵ steps to the next question.
+    hint.textContent = '⌘↵ next';
     hint.hidden = false;
     show(document.getElementById(k));
     field.focus();
@@ -992,6 +1112,11 @@ export function mount(opts = {}) {
 
   function openComment(item) {
     leaveOpen();
+    // leaveOpen may have been the call that created this comment's thread, and
+    // `item` is a copy taken before it ran. Reading the stale copy is what made
+    // re-clicking an open comment's own marker reopen it in pre-thread mode,
+    // with the text its first turn had already frozen editable again.
+    item = noteById(item.id) || item;
     // Reading the thread is what clears the marker's ring, and opening the
     // popover is the only way to read it.
     if (item.unread) {
@@ -1266,9 +1391,19 @@ export function mount(opts = {}) {
     if (!open) return;
     if (open.kind === 'comment') {
       const id = open.id;
+      // Resolve deliberately does not cancel: it means you are done reading.
+      // Discard means this should not have happened, which is the one gesture
+      // that earns the ask. It is still refused once the agent is landing, so
+      // the edit can arrive anyway.
+      const running = (noteById(id)?.thread || []).find(t => CANCELLABLE.has(t.state));
+      if (running && transportCan('cancel')) transport.cancel(running.request);
       // cleared first, so nothing writes the discarded text back on the way out
       open = null;
       pen.remove(id);
+      // The pill outlived its own comment otherwise: every later repaint for
+      // that turn found no turn and returned, freezing it on `the agent is
+      // working` with a cancel button that did nothing.
+      if (pillAt && pillAt.noteId === id) hidePill();
       pop.hidden = true;
       return;
     }
@@ -1377,7 +1512,7 @@ export function mount(opts = {}) {
       window.removeEventListener('scroll', hideTip, true);
       clickThroughRule?.remove();
       clickThroughRule = null;
-      disconnect();
+      disconnect(true);
       pen.destroy();
       bar.remove();
       pop.remove();

@@ -360,10 +360,17 @@
       const answers = Object.keys(state.answers).length ? { answers: state.answers } : {};
       return { v: 3, counter: state.counter, ...answers, targets };
     }
+    function flushed() {
+      return new Promise((resolve2) => {
+        const tick = () => writing || dirty ? setTimeout(tick, 0) : resolve2();
+        tick();
+      });
+    }
     return {
       state,
       group,
       loaded: () => loaded,
+      flushed,
       answer: (key2) => state.answers[key2] || null,
       setAnswer(key2, record) {
         state.answers[key2] = record;
@@ -1732,6 +1739,10 @@
       // blob over the real one. Gestures are already held off by applyMode; a host
       // that writes notes from its own code has to ask.
       loaded: () => loaded,
+      // Resolves once every pending write has landed. The store writes behind the
+      // gesture that caused it, so "I typed it" and "it is on disk" are different
+      // moments, and anything that tears the page down between the two loses it.
+      flushed: () => store.flushed(),
       // true once a write has failed: the notes are memory-only from here
       saveFailed: () => saveFailed,
       destroy() {
@@ -2046,10 +2057,11 @@
     }
     const CAP = { line: 400, lines: 50, reply: 32 * 1024, say: 2e3, pairs: 8, history: 16 * 1024 };
     const RUNNING = /* @__PURE__ */ new Set(["sent", "acked", "landing"]);
-    const UNFINISHED = /* @__PURE__ */ new Set(["queued", "sent", "acked", "landing"]);
+    const UNFINISHED = /* @__PURE__ */ new Set(["queued", "parked", "sent", "acked", "landing"]);
     const token = Math.random().toString(36).slice(2, 6);
     let transport = null;
     let inflight = null;
+    let detachWhenIdle = false;
     const byRequest = /* @__PURE__ */ new Map();
     const now = () => (/* @__PURE__ */ new Date()).toISOString();
     const cut = (s, n) => s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
@@ -2077,6 +2089,10 @@
       });
       byRequest.delete(requestId);
       if (inflight === requestId) inflight = null;
+      if (detachWhenIdle && !inflight) {
+        disconnect();
+        return ok;
+      }
       drain();
       return ok;
     }
@@ -2102,15 +2118,19 @@
       reply(requestId, text, opts2 = {}) {
         const said = String(text ?? "");
         if (!said) return false;
-        let rang = false;
+        let rang = false, back = false;
         const ok = withTurn(requestId, (turn, note) => {
           turn.reply = cut(opts2.append && turn.reply ? turn.reply + said : said, CAP.reply);
           turn.repliedAt = now();
+          if (note.resolved) {
+            delete note.resolved;
+            back = true;
+          }
           if (open && open.kind === "comment" && open.id === note.id) return;
           rang = !note.unread;
           note.unread = true;
         });
-        if (rang) pen.layout();
+        if (rang || back) pen.layout();
         return ok;
       },
       // The transport's own remark about an exchange, which is how a mangled reply
@@ -2130,6 +2150,7 @@
         const you = last ? t.ask : cut(t.ask, CAP.say);
         if (t.reply) return { you, agent: cut(t.reply, CAP.say) };
         if (UNFINISHED.has(t.state)) return { you };
+        if (t.state === "done") return { you, done: true };
         return { you, failed: t.error || "this one did not finish" };
       });
       let earlier = 0;
@@ -2140,7 +2161,7 @@
       return { pairs, earlier };
     }
     function sendTurn(noteId, said) {
-      if (!transport) return null;
+      if (!transport || detachWhenIdle) return null;
       if (!pen.loaded()) return null;
       const text = String(said ?? "");
       if (!text.trim()) return null;
@@ -2187,18 +2208,23 @@
       showTurn(noteId, turnId);
       const projection = pen.review();
       const history = historyFor(thread2.slice(0, at + 1));
-      const ok = transport.send({
-        id: requestId,
-        ask: thread2[at].ask,
-        turn: at + 1,
-        item: projection.items.find((i) => i.kind === "comment" && i.id === noteId) || null,
-        projection,
-        ...history ? { history } : {}
-      });
+      let ok = null;
+      try {
+        ok = transport.send({
+          id: requestId,
+          ask: thread2[at].ask,
+          turn: at + 1,
+          item: projection.items.find((i) => i.kind === "comment" && i.id === noteId) || null,
+          projection,
+          ...history ? { history } : {}
+        });
+      } catch (err) {
+        console.warn("[review] the transport threw", err);
+      }
       if (!ok) settleTurn(requestId, "error", "this could not be sent");
     }
     function drain() {
-      if (!transport || inflight) return;
+      if (!transport || inflight || detachWhenIdle) return;
       let pick = null;
       for (const note of pen.items()) {
         for (const turn of note.thread || []) {
@@ -2213,9 +2239,17 @@
         if (!note.thread) return false;
         let changed = false;
         for (const turn of note.thread) {
-          if (turn.state === "queued" && !turn.stalled) {
-            turn.stalled = true;
+          if (turn.state === "queued") {
+            turn.state = "parked";
+            delete turn.stalled;
             changed = true;
+            continue;
+          }
+          if (turn.state === "parked") {
+            if (turn.stalled) {
+              delete turn.stalled;
+              changed = true;
+            }
             continue;
           }
           if (!RUNNING.has(turn.state)) continue;
@@ -2226,11 +2260,16 @@
         return changed;
       });
     }
-    function disconnect() {
+    function disconnect(force = false) {
       if (!transport) return;
+      if (inflight && !force) {
+        detachWhenIdle = true;
+        return;
+      }
       const t = transport;
       transport = null;
       inflight = null;
+      detachWhenIdle = false;
       byRequest.clear();
       dropPill();
       t.detach?.();
@@ -2260,7 +2299,7 @@
         if (!transport || inflight) return false;
         const note = noteById(noteId);
         const turn = (note && note.thread || []).find((t) => t.id === turnId);
-        if (!turn || turn.state !== "queued") return false;
+        if (!turn || turn.state !== "parked") return false;
         dispatch(noteId, turnId);
         return true;
       },
@@ -2295,6 +2334,10 @@
     const CANCELLABLE = /* @__PURE__ */ new Set(["sent", "acked"]);
     const TURN_LABEL = {
       queued: "waiting for the wire",
+      // Its own state rather than `queued` plus a flag. Two things that had to be
+      // read together is what let drain() pick up a turn the reload had parked and
+      // send it with nobody's hand on the button.
+      parked: "waiting for you to send it",
       sent: "sending to the agent",
       acked: "the agent is working",
       landing: "waiting for the change",
@@ -2332,26 +2375,27 @@
         if (said) into.appendChild(el("p", cls, said));
       }
     }
-    function trailFor(turn) {
+    function trailFor(turn, box) {
       const n = turn.progress.length + (turn.progressDropped || 0);
-      const box = el("details", "rprTrail");
-      box.appendChild(el("summary", null, `${n} progress line${n === 1 ? "" : "s"}`));
-      if (turn.progressDropped) box.appendChild(el("p", null, `\u2026${turn.progressDropped} earlier`));
-      for (const line of turn.progress) box.appendChild(el("p", null, line));
-      return box;
+      const trail = box || el("details", "rprTrail");
+      trail.textContent = "";
+      trail.appendChild(el("summary", null, `${n} progress line${n === 1 ? "" : "s"}`));
+      if (turn.progressDropped) trail.appendChild(el("p", null, `\u2026${turn.progressDropped} earlier`));
+      for (const line of turn.progress) trail.appendChild(el("p", null, line));
+      return trail;
     }
     function stateRow(turn) {
       const label = turnLine(turn);
       const cancellable = CANCELLABLE.has(turn.state) && transportCan("cancel");
-      const stalled = turn.state === "queued" && turn.stalled;
-      if (!label && !cancellable && !stalled) return null;
+      const parked = turn.state === "parked";
+      if (!label && !cancellable && !parked) return null;
       const row = el("div", "rprTurnState");
       row.append(el("span", ("rprDot " + dotClass(turn.state)).trim()), el("span", null, label));
       if (cancellable) {
         const btn = el("button", null, "cancel");
         btn.addEventListener("click", () => transport.cancel(turn.request));
         row.append(btn);
-      } else if (stalled) {
+      } else if (parked) {
         const btn = el("button", null, "send");
         btn.addEventListener("click", () => {
           thread.resume(openNoteId(), turn.id);
@@ -2363,32 +2407,79 @@
     }
     const openNoteId = () => open && open.kind === "comment" ? open.id : null;
     const transportCan = (name) => !!(transport && typeof transport[name] === "function");
-    function renderThread() {
+    let threadFor = null;
+    const turnBlocks = /* @__PURE__ */ new Map();
+    const turnTrails = /* @__PURE__ */ new Map();
+    const turnDrawn = /* @__PURE__ */ new Map();
+    const turnSig = (turn) => [
+      turn.state,
+      turn.repliedAt || "",
+      turn.reply || "",
+      turn.note || "",
+      (turn.progress || []).length,
+      turn.progressDropped || 0
+    ].join("\0");
+    function forgetThread() {
       threadBox.textContent = "";
+      turnBlocks.clear();
+      turnTrails.clear();
+      turnDrawn.clear();
+    }
+    function fillTurn(block, turn, them) {
+      const trail = turn.progress && turn.progress.length ? trailFor(turn, turnTrails.get(turn.id)) : null;
+      if (trail) turnTrails.set(turn.id, trail);
+      block.textContent = "";
+      block.append(whoRow("you", turn.at));
+      paragraphs(block, turn.ask, "rprSaid");
+      if (turn.reply) {
+        block.append(whoRow(them, turn.repliedAt));
+        paragraphs(block, turn.reply, "rprReply");
+      }
+      if (turn.note) block.appendChild(el("p", "rprMangled", turn.note));
+      if (trail) block.appendChild(trail);
+      const state = stateRow(turn);
+      if (state) block.appendChild(state);
+      if (RUNNING.has(turn.state) && turn.progress && turn.progress.length) {
+        block.appendChild(el("p", "rprNow", turn.progress[turn.progress.length - 1]));
+      }
+    }
+    function renderThread() {
       const id = openNoteId();
+      if (id !== threadFor) {
+        forgetThread();
+        threadFor = id;
+      }
       if (id == null) return threadBox.hidden = true;
       const turns = thread.of(id);
       threadBox.hidden = !turns.length;
-      if (!turns.length) return;
+      if (!turns.length) return void forgetThread();
+      const stick = threadBox.scrollHeight - threadBox.scrollTop - threadBox.clientHeight < 24;
       const them = transport && transport.label || "agent";
+      const live2 = /* @__PURE__ */ new Set();
+      let grew = false;
       for (const turn of turns) {
-        const block = el("div", "rprTurn");
-        block.append(whoRow("you", turn.at));
-        paragraphs(block, turn.ask, "rprSaid");
-        if (turn.reply) {
-          block.append(whoRow(them, turn.repliedAt));
-          paragraphs(block, turn.reply, "rprReply");
+        live2.add(turn.id);
+        let block = turnBlocks.get(turn.id);
+        if (!block) {
+          block = el("div", "rprTurn");
+          turnBlocks.set(turn.id, block);
+          grew = true;
         }
-        if (turn.note) block.appendChild(el("p", "rprMangled", turn.note));
-        if (turn.progress && turn.progress.length) block.appendChild(trailFor(turn));
-        const state = stateRow(turn);
-        if (state) block.appendChild(state);
-        if (RUNNING.has(turn.state) && turn.progress && turn.progress.length) {
-          block.appendChild(el("p", "rprNow", turn.progress[turn.progress.length - 1]));
+        const drawn = turnSig(turn) + "\0" + them;
+        if (turnDrawn.get(turn.id) !== drawn) {
+          fillTurn(block, turn, them);
+          turnDrawn.set(turn.id, drawn);
         }
-        threadBox.appendChild(block);
+        if (block.parentNode !== threadBox) threadBox.appendChild(block);
       }
-      scrollThreadToEnd();
+      for (const [turnId, block] of turnBlocks) {
+        if (live2.has(turnId)) continue;
+        block.remove();
+        turnBlocks.delete(turnId);
+        turnTrails.delete(turnId);
+        turnDrawn.delete(turnId);
+      }
+      if (stick || grew) scrollThreadToEnd();
     }
     function scrollThreadToEnd() {
       threadBox.scrollTop = threadBox.scrollHeight;
@@ -2420,6 +2511,11 @@
       pill = pillDot = pillText = pillCancel = null;
       pillAt = null;
     }
+    function hidePill() {
+      clearTimeout(pillTimer);
+      if (pill) pill.hidden = true;
+      pillAt = null;
+    }
     function renderPill(noteId, turnId) {
       if (!pill) return;
       const turn = thread.of(noteId).find((t) => t.id === turnId);
@@ -2435,12 +2531,7 @@
       pillText.textContent = (live2 ? turn.progress[turn.progress.length - 1] : turnLine(turn)) || "done";
       pillCancel.hidden = !(CANCELLABLE.has(turn.state) && transportCan("cancel"));
       if (turn.state === "done" || turn.state === "cancelled") {
-        pillTimer = setTimeout(() => {
-          if (pill) {
-            pill.hidden = true;
-            pillAt = null;
-          }
-        }, 2500);
+        pillTimer = setTimeout(hidePill, 2500);
       }
     }
     function showTurn(noteId, turnId) {
@@ -2484,12 +2575,14 @@
       leftBtn.hidden = false;
       leftBtn.textContent = "\u2039 prev";
       rightBtn.textContent = "next \u203A";
+      hint.textContent = "\u2318\u21B5 next";
       hint.hidden = false;
       show(document.getElementById(k));
       field.focus();
     }
     function openComment(item) {
       leaveOpen();
+      item = noteById(item.id) || item;
       if (item.unread) {
         pen.updateNote(item.id, (n) => {
           delete n.unread;
@@ -2706,8 +2799,11 @@
       if (!open) return;
       if (open.kind === "comment") {
         const id = open.id;
+        const running = (noteById(id)?.thread || []).find((t) => CANCELLABLE.has(t.state));
+        if (running && transportCan("cancel")) transport.cancel(running.request);
         open = null;
         pen.remove(id);
+        if (pillAt && pillAt.noteId === id) hidePill();
         pop.hidden = true;
         return;
       }
@@ -2809,7 +2905,7 @@
         window.removeEventListener("scroll", hideTip, true);
         clickThroughRule?.remove();
         clickThroughRule = null;
-        disconnect();
+        disconnect(true);
         pen.destroy();
         bar.remove();
         pop.remove();

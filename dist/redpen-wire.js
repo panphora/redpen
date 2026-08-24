@@ -18,7 +18,7 @@
     try {
       parsed = JSON.parse(raw);
     } catch {
-      if (/^\s*\{\s*"redpen"\s*:/.test(raw)) return { kind: "mangled", text: raw };
+      if (/"redpen"\s*:/.test(raw)) return { kind: "mangled", text: raw };
       return { kind: "progress", text: raw };
     }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { kind: "progress", text: raw };
@@ -90,10 +90,16 @@
         const handle = wire.send(payloadFor(request), { id: request.id, text: request.ask });
         if (!handle || !handle.id) return null;
         mine.add(handle.id);
-        handle.done.then((final) => {
-          mine.delete(handle.id);
-          sink?.state(handle.id, final.state, final.error);
-        });
+        handle.done.then(
+          (final) => {
+            mine.delete(handle.id);
+            sink?.state(handle.id, final.state, final.error);
+          },
+          (err) => {
+            mine.delete(handle.id);
+            sink?.state(handle.id, "error", err && err.message ? err.message : "the wire failed");
+          }
+        );
         return { id: handle.id };
       },
       // clayjs refuses a cancel that arrived too late, so the rule lives there
