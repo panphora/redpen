@@ -522,7 +522,7 @@ show-filtering, overshoot binding, resize, persistence and `data()`.
 
 ## Consumers
 
-- `hyperclay-new-website/index.html` — the review adapter, and the reason it exists.
+- `hyperclay/new-home/index.html` — the review adapter, and the reason it exists.
   Vendors `dist/redpen-review.js` into `assets/vendor/`, mounts and destroys it on a
   `body.review` class toggle, and uses every hook in [Host integration](#host-integration):
   the bar moved to clear its own toggle, that toggle at z-index 99993 and marked
