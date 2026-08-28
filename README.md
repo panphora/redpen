@@ -530,7 +530,7 @@ show-filtering, overshoot binding, resize, persistence and `data()`.
 - `experiments/homepage-illustrations/` — `notes.js`, `draw.js`, `feedback-hub.js`
   there are symlinks into this repo's `src/`; scene pages import them as modules
   (notes via the `lineart.js` import, draw via its own script tag).
-- `freelance-rate-calculator-app/index.html` — loads `dist/redpen.js` through a
+- `the-freelance-rate-calculator/index.html` — loads `dist/redpen.js` through a
   guarded loader that only runs on `file:` or localhost.
 
 ## JSON shape
