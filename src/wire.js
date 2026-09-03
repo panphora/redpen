@@ -216,6 +216,14 @@ export function attach(review, opts = {}) {
     return attached;
   }
 
+  if (review.thread && review.thread.connected && review.thread.connected()) {
+    // Another copy of this module (the wire bundle loaded beside the review
+    // bundle) keeps its own `attached`; a handle over a transport that never
+    // connected would detach nothing.
+    console.warn('[redpen] a transport is already connected to this review');
+    return null;
+  }
+
   const transport = opts.transport || createTransport(wire);
   const disconnect = review.thread.connect(transport);
 

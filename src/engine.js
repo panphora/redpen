@@ -151,7 +151,7 @@ export function create(opts = {}) {
       store.save();
       noteSurface.layout();
       emit('change', { action: 'add', item });
-      emit('item:add', { item });
+      emit('item:add', { item, sticky: !!(gesture && gesture.info && gesture.info.sticky) });
     },
     afterLayout: () => emit('layout', {}),
   });
@@ -319,6 +319,13 @@ export function create(opts = {}) {
         });
       }
     }
+    const strokes = [];
+    for (const [id, g] of Object.entries(d.targets)) {
+      if (!g.strokes.length) continue;
+      if (id !== PAGE && !bases[id]) bases[id] = { basis: g.basis, coords: g.coords, ...(g.viewBox ? { viewBox: g.viewBox } : {}) };
+      for (const s of g.strokes) strokes.push({ ...(id === PAGE ? {} : { target_id: id }), ...s });
+    }
+    const pageBox = d.targets[PAGE] && d.targets[PAGE].viewBox;
     const asked = requests.map((r, i) => requestView(r, i));
     return {
       page: location.pathname.split('/').pop() || location.pathname,
@@ -326,6 +333,7 @@ export function create(opts = {}) {
       unanswered: asked.filter(v => !v.answered).length,
       orphaned: orphans().length,
       resolved: items.filter(i => i.kind === 'comment' && i.resolved).length,
+      ...(strokes.length ? { strokes, ...(pageBox ? { viewBox: pageBox } : {}) } : {}),
       ...(coords ? { coords } : {}),
       ...(Object.keys(bases).length ? { targets: bases } : {}),
       items,
@@ -425,6 +433,28 @@ export function create(opts = {}) {
       repaint();
       emit('change', { action: 'remove', item: hit.item });
     },
+    // Put removed notes back, for an undo. Each item is what items() handed out,
+    // a copy carrying target_id; it returns to its group in id order.
+    restore(items) {
+      let changed = false;
+      for (const it of items || []) {
+        const { target_id: targetId, ...note } = it;
+        const g = store.group(targetId ?? PAGE);
+        if (g.notes.some(n => n.id === note.id)) continue;
+        g.notes.push(note);
+        g.notes.sort((a, b) => a.id - b.id);
+        changed = true;
+      }
+      if (!changed) return false;
+      store.save();
+      repaint();
+      emit('change', { action: 'restore' });
+      return true;
+    },
+    // purely visual, like openRequest: the marker a list row is hovering, and
+    // the marker whose newest request is running
+    highlight: id => noteSurface.setHot(id ?? null),
+    working: id => noteSurface.setWorking(id ?? null),
     undoStroke(targetId) {
       const groups = eachGroup(targetId).filter(([, g]) => g.strokes.length);
       if (!groups.length) return;

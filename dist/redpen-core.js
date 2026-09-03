@@ -484,18 +484,20 @@
   .laInkLayer { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99990; pointer-events: none; }
   .laMarks { position: absolute; overflow: visible; pointer-events: none; }
   .laBox { position: absolute; border: 2px solid #e5484d; background: rgba(229, 72, 77, .12); box-sizing: border-box; }
-  .laBox.el { background: rgba(229, 72, 77, .06); }
-  .laBox.laPoint { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: #e5484d; border-color: #FDFDFC; }
-  /* The tag carries no number. A marker's job is to say "something was said
-     here", and the id it used to show was only ever useful to whoever was
-     reading the export, which still carries it. Losing the digits also lets the
-     tag be the small round click target that reopens the comment. */
-  .laBox .tag { position: absolute; top: -7px; left: -7px; width: 13px; height: 13px; box-sizing: border-box;
-    background: #e5484d; border: 2px solid #FDFDFC; border-radius: 50%;
-    pointer-events: auto; cursor: pointer; }
-  /* A point marker is already a dot, so it is its own click target rather than
-     wearing a second one. */
-  .laBox.laPoint { pointer-events: auto; cursor: pointer; }
+  .laBox.el { background: transparent; }
+  /* The tag carries its comment's number, which is what the list, the strip and
+     the export all call it. A point marker IS its own tag rather than wearing a
+     second one. */
+  .laBox .tag { position: absolute; top: -9px; left: -9px; min-width: 17px; height: 17px; padding: 0 3px; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; border-radius: 9px;
+    background: #e5484d; color: #FDFDFC; border: 2px solid #FDFDFC;
+    font: 700 10px/13px ui-monospace, "SF Mono", Menlo, monospace; pointer-events: auto; cursor: pointer; }
+  .laBox.laPoint { min-width: 17px; height: 17px; width: auto; padding: 0 3px; margin: -8.5px 0 0 -8.5px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center; background: #e5484d; color: #FDFDFC; border-color: #FDFDFC;
+    font: 700 10px/13px ui-monospace, "SF Mono", Menlo, monospace; pointer-events: auto; cursor: pointer; }
+  .laBox.hot { outline: 2px solid #e5484d; outline-offset: 2px; }
+  .laBox .tag.working, .laBox.laPoint.working { animation: laPulse 1.1s ease-in-out infinite; }
+  @keyframes laPulse { 0%, 100% { opacity: 1 } 50% { opacity: .4 } }
   .laBox .tag:hover, .laBox.laPoint:hover { background: #17110C; }
   .laBox .tag.unread, .laBox.laPoint.unread { box-shadow: 0 0 0 3px rgba(229, 72, 77, .4); }
   .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
@@ -524,11 +526,6 @@
     el.className = cls;
     if (id) el.id = id;
     return chrome(el);
-  }
-  function markerTitle(note) {
-    const said = (note.text || "").trim();
-    if (!said) return "an empty comment";
-    return said.length > 72 ? said.slice(0, 71) + "\u2026" : said;
   }
   function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick, onNoteClick }) {
     const describe2 = identify || describe;
@@ -604,10 +601,10 @@
             const p = screenPoint(t, note);
             if (!p) continue;
             const dot = document.createElement("div");
-            dot.className = "laBox laPoint" + (note.unread ? " unread" : "");
+            dot.className = "laBox laPoint" + (note.unread ? " unread" : "") + (note.id === hot ? " hot" : "") + (note.id === working ? " working" : "");
             dot.dataset.laTarget = id;
             dot.dataset.laNote = note.id;
-            dot.title = markerTitle(note);
+            dot.textContent = String(note.id);
             placePoint(dot, p.x, p.y);
             markers.appendChild(dot);
             continue;
@@ -615,12 +612,12 @@
           const r = screenRect(t, note);
           if (!r) continue;
           const box = document.createElement("div");
-          box.className = "laBox" + (note.kind === "element" ? " el" : "");
+          box.className = "laBox" + (note.kind === "element" ? " el" : "") + (note.id === hot ? " hot" : "");
           box.dataset.laTarget = id;
           box.dataset.laNote = note.id;
           const tag = document.createElement("span");
-          tag.className = "tag" + (note.unread ? " unread" : "");
-          tag.title = markerTitle(note);
+          tag.className = "tag" + (note.unread ? " unread" : "") + (note.id === working ? " working" : "");
+          tag.textContent = String(note.id);
           box.appendChild(tag);
           place(box, r);
           markers.appendChild(box);
@@ -630,6 +627,17 @@
       afterLayout?.();
     }
     let openKey = null;
+    let hot = null, working = null;
+    function setHot(id) {
+      if (hot === id) return;
+      hot = id;
+      layout();
+    }
+    function setWorking(id) {
+      if (working === id) return;
+      working = id;
+      layout();
+    }
     function layoutRequests() {
       reqs.textContent = "";
       const base = reqs.getBoundingClientRect();
@@ -693,7 +701,7 @@
       } catch {
       }
       const el = topElementAt(e.clientX, e.clientY);
-      press = { x: e.clientX, y: e.clientY, el, basis: graphicBasis(el), area: false, target: targets.hitTest(e.clientX, e.clientY) };
+      press = { x: e.clientX, y: e.clientY, el, basis: graphicBasis(el), area: false, shift: !!e.shiftKey, target: targets.hitTest(e.clientX, e.clientY) };
       setHover(null);
     });
     function clampedRegion(e) {
@@ -743,6 +751,7 @@
           x: press.x,
           y: press.y,
           targetId: press.target.id,
+          sticky: press.shift,
           box: r ? { x: r.left, y: r.top, w: r.width, h: r.height } : null
         }
       };
@@ -891,14 +900,18 @@
       reqs.remove();
       overlay.remove();
     }
-    return { markers, overlay, layout, setActive, setOpenRequest, destroy };
+    return { markers, overlay, layout, setActive, setOpenRequest, setHot, setWorking, destroy };
   }
 
   // src/draw-surface.js
   var CFG = {
     width: 3,
     // stroke width, px
-    color: "#000",
+    color: "#17110C",
+    halo: "#FDFDFC",
+    // the wider pass under the ink, so black reads on a dark page
+    haloWidth: 2,
+    // px added to the stroke width for that pass
     lazyRadius: 4,
     // brush trails the pointer by this many px at full speed; the live jitter killer
     minLazyRadius: 1.5,
@@ -1028,18 +1041,7 @@
     const closed = isClosed(s, bbox);
     return { d: toPath(s, closed), bbox, closed };
   }
-  function drawStroke(ctx, pts) {
-    ctx.lineWidth = CFG.width;
-    ctx.strokeStyle = CFG.color;
-    ctx.fillStyle = CFG.color;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    if (pts.length === 1) {
-      ctx.beginPath();
-      ctx.arc(pts[0].x, pts[0].y, CFG.width / 2, 0, Math.PI * 2);
-      ctx.fill();
-      return;
-    }
+  function tracePath(ctx, pts) {
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length - 1; i++) {
@@ -1049,7 +1051,23 @@
     }
     const last = pts[pts.length - 1];
     ctx.lineTo(last.x, last.y);
-    ctx.stroke();
+  }
+  function drawStroke(ctx, pts) {
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (const [color, width] of [[CFG.halo, CFG.width + CFG.haloWidth], [CFG.color, CFG.width]]) {
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = width;
+      if (pts.length === 1) {
+        ctx.beginPath();
+        ctx.arc(pts[0].x, pts[0].y, width / 2, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      tracePath(ctx, pts);
+      ctx.stroke();
+    }
   }
   function createDrawSurface({ mount, targets, store, ink, onStroke, visible }) {
     const fixed = mount === document.body;
@@ -1245,16 +1263,18 @@
       svg.textContent = "";
       for (const s of strokes) {
         if (!s.points || !s.points.length) continue;
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", pathData(s.points));
-        path.setAttribute("fill", "none");
-        path.setAttribute("stroke", s.color || "#000");
-        path.setAttribute("stroke-width", s.width || 3);
-        path.setAttribute("stroke-linecap", "round");
-        path.setAttribute("stroke-linejoin", "round");
-        path.setAttribute("vector-effect", "non-scaling-stroke");
-        path.dataset.laStroke = s.id;
-        svg.appendChild(path);
+        for (const [color, width] of [["#FDFDFC", (s.width || 3) + 2], [s.color || "#17110C", s.width || 3]]) {
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", pathData(s.points));
+          path.setAttribute("fill", "none");
+          path.setAttribute("stroke", color);
+          path.setAttribute("stroke-width", width);
+          path.setAttribute("stroke-linecap", "round");
+          path.setAttribute("stroke-linejoin", "round");
+          path.setAttribute("vector-effect", "non-scaling-stroke");
+          path.dataset.laStroke = s.id;
+          svg.appendChild(path);
+        }
       }
     }
     function drop(id) {
@@ -1397,7 +1417,7 @@
         store.save();
         noteSurface.layout();
         emit("change", { action: "add", item });
-        emit("item:add", { item });
+        emit("item:add", { item, sticky: !!(gesture && gesture.info && gesture.info.sticky) });
       },
       afterLayout: () => emit("layout", {})
     });
@@ -1543,6 +1563,13 @@
           });
         }
       }
+      const strokes = [];
+      for (const [id, g] of Object.entries(d.targets)) {
+        if (!g.strokes.length) continue;
+        if (id !== PAGE && !bases[id]) bases[id] = { basis: g.basis, coords: g.coords, ...g.viewBox ? { viewBox: g.viewBox } : {} };
+        for (const s of g.strokes) strokes.push({ ...id === PAGE ? {} : { target_id: id }, ...s });
+      }
+      const pageBox = d.targets[PAGE] && d.targets[PAGE].viewBox;
       const asked = requests.map((r, i) => requestView(r, i));
       return {
         page: location.pathname.split("/").pop() || location.pathname,
@@ -1550,6 +1577,7 @@
         unanswered: asked.filter((v) => !v.answered).length,
         orphaned: orphans().length,
         resolved: items.filter((i) => i.kind === "comment" && i.resolved).length,
+        ...strokes.length ? { strokes, ...pageBox ? { viewBox: pageBox } : {} } : {},
         ...coords ? { coords } : {},
         ...Object.keys(bases).length ? { targets: bases } : {},
         items
@@ -1649,6 +1677,28 @@
         repaint();
         emit("change", { action: "remove", item: hit.item });
       },
+      // Put removed notes back, for an undo. Each item is what items() handed out,
+      // a copy carrying target_id; it returns to its group in id order.
+      restore(items) {
+        let changed = false;
+        for (const it of items || []) {
+          const { target_id: targetId, ...note } = it;
+          const g = store.group(targetId ?? PAGE);
+          if (g.notes.some((n) => n.id === note.id)) continue;
+          g.notes.push(note);
+          g.notes.sort((a, b) => a.id - b.id);
+          changed = true;
+        }
+        if (!changed) return false;
+        store.save();
+        repaint();
+        emit("change", { action: "restore" });
+        return true;
+      },
+      // purely visual, like openRequest: the marker a list row is hovering, and
+      // the marker whose newest request is running
+      highlight: (id) => noteSurface.setHot(id ?? null),
+      working: (id) => noteSurface.setWorking(id ?? null),
       undoStroke(targetId) {
         const groups = eachGroup(targetId).filter(([, g]) => g.strokes.length);
         if (!groups.length) return;

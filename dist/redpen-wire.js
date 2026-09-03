@@ -117,6 +117,10 @@
       if (attached.review !== review) console.warn("[redpen] the wire is already attached to this page");
       return attached;
     }
+    if (review.thread && review.thread.connected && review.thread.connected()) {
+      console.warn("[redpen] a transport is already connected to this review");
+      return null;
+    }
     const transport = opts.transport || createTransport(wire);
     const disconnect = review.thread.connect(transport);
     attached = {

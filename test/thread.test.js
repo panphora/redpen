@@ -1,5 +1,5 @@
 import { expect } from '@esm-bundle/chai';
-import { mount } from '../src/review.js';
+import { mount } from '../src/mount.js';
 
 // The thread's preconditions: a comment you can get back into, and a popover you
 // can leave without re-sending what is inside it. Everything else in the thread
@@ -106,9 +106,21 @@ const onlyNote = () => review.json().items.find(i => i.kind === 'comment');
 
 const turns = () => [...pop().querySelectorAll('.rprThread .rprTurn')];
 const textOf = (root, sel) => [...root.querySelectorAll(sel)].map(n => n.textContent);
-const pill = () => document.querySelector('.rprWire');
-const barBtn = label =>
-  [...document.querySelectorAll('.rprBar button')].find(b => b.textContent === label);
+
+// The dock: the strip is the one-line report on the current comment or the
+// running request, and the panel is where resolved comments now live.
+const strip = () => document.querySelector('.rpStrip');
+const panel = () => document.querySelector('.rpPanel');
+const openList = () => document.querySelector('.rpList').click();
+const panelBtn = label =>
+  [...panel().querySelectorAll('button')].find(b => b.textContent === label);
+
+// resolve and discard moved into the popover's own menu, behind the ⋯ button
+const popMenuBtn = act => {
+  const more = pop().querySelector('.rpPopMore');
+  if (pop().querySelector('.rpPopMenu').hidden) more.click();
+  return pop().querySelector(`[data-act="${act}"]`);
+};
 
 // a comment with one exchange behind it, which is where the thread's UI starts
 async function threaded(key, said = 'make this shorter') {
@@ -667,55 +679,60 @@ it('a queued turn left by a reload waits behind a send button', async () => {
 it('resolving takes the comment off the page and shuts the popover', async () => {
   await threaded('test:ui-resolve');
   clickMarker();
-  topBtn('resolve').click();
+  popMenuBtn('resolve').click();
 
   expect(pop().hidden).to.equal(true);
   expect(marker()).to.equal(null);
-  expect(barBtn('1 resolved')).to.not.equal(undefined);
+  openList();
+  expect(panelBtn('1 resolved')).to.not.equal(undefined);
 });
 
 it('the resolved list is the way back to one', async () => {
   await threaded('test:ui-resolved-list');
   clickMarker();
-  topBtn('resolve').click();
-  barBtn('1 resolved').click();
+  popMenuBtn('resolve').click();
+  openList();
+  panelBtn('1 resolved').click();
 
-  expect(textOf(pop(), '.rprOrphan p')).to.deep.equal(['make this shorter']);
-  [...pop().querySelectorAll('.rprOrphan button')].find(b => b.textContent === 'reopen').click();
+  expect(textOf(panel(), '.rpItem .said')).to.deep.equal(['make this shorter']);
+  panelBtn('reopen').click();
 
   expect(marker()).to.not.equal(null);
   expect(pop().hidden).to.equal(false);
-  expect(topBtn('resolve')).to.not.equal(undefined);
+  expect(popMenuBtn('resolve').textContent).to.equal('Resolve');
 });
 
 it('a resolved comment can be discarded from the list', async () => {
   await threaded('test:ui-resolved-discard');
   clickMarker();
-  topBtn('resolve').click();
-  barBtn('1 resolved').click();
-  [...pop().querySelectorAll('.rprOrphan button')].find(b => b.textContent === 'discard').click();
+  popMenuBtn('resolve').click();
+  openList();
+  panelBtn('1 resolved').click();
+  // destructive, so the row asks in place before it goes
+  panelBtn('discard').click();
+  panelBtn('delete').click();
 
   expect(review.json().items.filter(i => i.kind === 'comment').length).to.equal(0);
   expect(pop().hidden).to.equal(true);
 });
 
-it('the pill reports the turn and is a way back into the thread', async () => {
+it('the strip reports the turn and is a way back into the thread', async () => {
   const wire = await threaded('test:ui-pill');
   const req = wire.sent[0].id;
   wire.sink.state(req, 'acked');
 
-  expect(pill().hidden).to.equal(false);
-  expect(pill().querySelector('.rprWireText').textContent).to.equal('the agent is working');
-  expect(pill().querySelector('.rprDot').classList.contains('working')).to.equal(true);
+  expect(strip().hidden).to.equal(false);
+  expect(strip().querySelector('.rpSaid').textContent).to.equal('the agent is working');
+  expect(strip().querySelector('.rprDot').classList.contains('working')).to.equal(true);
 
-  pill().click();
+  strip().click();
   expect(pop().hidden).to.equal(false);
   expect(turns().length).to.equal(1);
 });
 
-it('a page with no transport builds no pill at all', async () => {
+it('a page with no transport shows no wire dot at all', async () => {
   review = mount({ key: 'test:ui-no-pill' });
   await loaded();
   madeComment('make this shorter');
-  expect(pill()).to.equal(null);
+  expect(document.querySelector('.rpWire').hidden).to.equal(true);
 });

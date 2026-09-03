@@ -43,10 +43,10 @@
       return t.node && t.node.isConnected ? t.node : null;
     }
     function svgOf(t) {
-      const el = elOf(t);
-      if (!el) return null;
-      if (el.tagName && el.tagName.toLowerCase() === "svg") return el;
-      return el.ownerSVGElement || null;
+      const el3 = elOf(t);
+      if (!el3) return null;
+      if (el3.tagName && el3.tagName.toLowerCase() === "svg") return el3;
+      return el3.ownerSVGElement || null;
     }
     function viewBoxOf(t) {
       if (t.basis.viewBox) return t.basis.viewBox;
@@ -57,12 +57,12 @@
       return n.length === 4 && n.every((v) => !isNaN(v)) ? n : null;
     }
     function rectOf(t) {
-      const el = elOf(t);
-      if (t.page && el === document.documentElement) {
-        return { left: -scrollX, top: -scrollY, width: el.scrollWidth, height: el.scrollHeight };
+      const el3 = elOf(t);
+      if (t.page && el3 === document.documentElement) {
+        return { left: -scrollX, top: -scrollY, width: el3.scrollWidth, height: el3.scrollHeight };
       }
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
+      if (!el3) return null;
+      const r = el3.getBoundingClientRect();
       return { left: r.left, top: r.top, width: r.width, height: r.height };
     }
     function isViewbox(t) {
@@ -102,9 +102,9 @@
       let best = null, bestArea = Infinity;
       for (const t of list) {
         if (t.page) continue;
-        const el = elOf(t);
-        if (!el) continue;
-        const r = el.getBoundingClientRect();
+        const el3 = elOf(t);
+        if (!el3) continue;
+        const r = el3.getBoundingClientRect();
         if (cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) continue;
         const area = r.width * r.height;
         if (area <= bestArea) {
@@ -392,17 +392,17 @@
   }
 
   // src/identify.js
-  function nthOfType(el) {
-    const p = el.parentElement;
+  function nthOfType(el3) {
+    const p = el3.parentElement;
     if (!p) return 0;
-    const sibs = [...p.children].filter((s) => s.tagName === el.tagName);
-    return sibs.length > 1 ? sibs.indexOf(el) + 1 : 0;
+    const sibs = [...p.children].filter((s) => s.tagName === el3.tagName);
+    return sibs.length > 1 ? sibs.indexOf(el3) + 1 : 0;
   }
-  function cssPath(el) {
-    if (el === document.body) return "body";
-    if (el === document.documentElement) return "html";
+  function cssPath(el3) {
+    if (el3 === document.body) return "body";
+    if (el3 === document.documentElement) return "html";
     const parts = [];
-    for (let n = el; n && n.nodeType === 1 && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+    for (let n = el3; n && n.nodeType === 1 && n !== document.body && n !== document.documentElement; n = n.parentElement) {
       let seg = n instanceof SVGElement ? n.tagName : n.tagName.toLowerCase();
       if (n.id) {
         parts.unshift(seg + "#" + CSS.escape(n.id));
@@ -415,17 +415,17 @@
     }
     return parts.join(" > ");
   }
-  function describe(el, lite) {
-    const t = { selector: cssPath(el), tag: el.tagName.toLowerCase() };
-    if (el.id) t.id = el.id;
-    if (el.classList.length) t.classes = [...el.classList];
-    const nth = nthOfType(el);
+  function describe(el3, lite) {
+    const t = { selector: cssPath(el3), tag: el3.tagName.toLowerCase() };
+    if (el3.id) t.id = el3.id;
+    if (el3.classList.length) t.classes = [...el3.classList];
+    const nth = nthOfType(el3);
     if (nth) t.nth = nth;
-    const text = ((el.innerText ?? el.textContent) || "").replace(/\s+/g, " ").trim().slice(0, lite ? 60 : 100);
+    const text = ((el3.innerText ?? el3.textContent) || "").replace(/\s+/g, " ").trim().slice(0, lite ? 60 : 100);
     if (text) t.text = text;
     if (lite) return t;
     const ancestors = [];
-    for (let n = el.parentElement, i = 0; n && i < 4 && n !== document.body && n !== document.documentElement; n = n.parentElement, i++) {
+    for (let n = el3.parentElement, i = 0; n && i < 4 && n !== document.body && n !== document.documentElement; n = n.parentElement, i++) {
       const a = { tag: n.tagName.toLowerCase() };
       if (n.id) a.id = n.id;
       if (n.classList.length) a.classes = [...n.classList];
@@ -444,8 +444,8 @@
       return null;
     }
   }
-  function graphicBasis(el) {
-    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+  function graphicBasis(el3) {
+    for (let n = el3; n && n.nodeType === 1; n = n.parentElement) {
       const t = n.tagName.toLowerCase();
       if (t === "canvas" || t === "img" || t === "video") return n;
       if (t === "svg" && !n.ownerSVGElement) return n;
@@ -453,9 +453,9 @@
     return null;
   }
   function topElementAt(x, y) {
-    for (const el of document.elementsFromPoint(x, y)) {
-      if (el.closest("[data-la-ui]")) continue;
-      return el;
+    for (const el3 of document.elementsFromPoint(x, y)) {
+      if (el3.closest("[data-la-ui]")) continue;
+      return el3;
     }
     return document.body;
   }
@@ -478,24 +478,26 @@
   var round3 = (n) => Math.round(n * 1e3) / 1e3;
   var MAX_AREA_ELEMENTS = 15;
   var POINT_TAGS = /* @__PURE__ */ new Set(["canvas", "img", "video"]);
-  var pointGraphic = (el) => !!el && POINT_TAGS.has(el.tagName.toLowerCase());
+  var pointGraphic = (el3) => !!el3 && POINT_TAGS.has(el3.tagName.toLowerCase());
   var SURFACE_CSS = `
   .laMarkers { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99991; pointer-events: none; }
   .laInkLayer { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99990; pointer-events: none; }
   .laMarks { position: absolute; overflow: visible; pointer-events: none; }
   .laBox { position: absolute; border: 2px solid #e5484d; background: rgba(229, 72, 77, .12); box-sizing: border-box; }
-  .laBox.el { background: rgba(229, 72, 77, .06); }
-  .laBox.laPoint { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: #e5484d; border-color: #FDFDFC; }
-  /* The tag carries no number. A marker's job is to say "something was said
-     here", and the id it used to show was only ever useful to whoever was
-     reading the export, which still carries it. Losing the digits also lets the
-     tag be the small round click target that reopens the comment. */
-  .laBox .tag { position: absolute; top: -7px; left: -7px; width: 13px; height: 13px; box-sizing: border-box;
-    background: #e5484d; border: 2px solid #FDFDFC; border-radius: 50%;
-    pointer-events: auto; cursor: pointer; }
-  /* A point marker is already a dot, so it is its own click target rather than
-     wearing a second one. */
-  .laBox.laPoint { pointer-events: auto; cursor: pointer; }
+  .laBox.el { background: transparent; }
+  /* The tag carries its comment's number, which is what the list, the strip and
+     the export all call it. A point marker IS its own tag rather than wearing a
+     second one. */
+  .laBox .tag { position: absolute; top: -9px; left: -9px; min-width: 17px; height: 17px; padding: 0 3px; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; border-radius: 9px;
+    background: #e5484d; color: #FDFDFC; border: 2px solid #FDFDFC;
+    font: 700 10px/13px ui-monospace, "SF Mono", Menlo, monospace; pointer-events: auto; cursor: pointer; }
+  .laBox.laPoint { min-width: 17px; height: 17px; width: auto; padding: 0 3px; margin: -8.5px 0 0 -8.5px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center; background: #e5484d; color: #FDFDFC; border-color: #FDFDFC;
+    font: 700 10px/13px ui-monospace, "SF Mono", Menlo, monospace; pointer-events: auto; cursor: pointer; }
+  .laBox.hot { outline: 2px solid #e5484d; outline-offset: 2px; }
+  .laBox .tag.working, .laBox.laPoint.working { animation: laPulse 1.1s ease-in-out infinite; }
+  @keyframes laPulse { 0%, 100% { opacity: 1 } 50% { opacity: .4 } }
   .laBox .tag:hover, .laBox.laPoint:hover { background: #17110C; }
   .laBox .tag.unread, .laBox.laPoint.unread { box-shadow: 0 0 0 3px rgba(229, 72, 77, .4); }
   .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
@@ -509,9 +511,9 @@
   .laReq.stale { box-shadow: 0 0 0 2px #E8A33D; }
   .laReq.on { box-shadow: 0 0 0 3px rgba(229, 72, 77, .35); }
 `;
-  function tailRect(el) {
-    const rects = el.getClientRects();
-    return rects.length ? rects[rects.length - 1] : el.getBoundingClientRect();
+  function tailRect(el3) {
+    const rects = el3.getClientRects();
+    return rects.length ? rects[rects.length - 1] : el3.getBoundingClientRect();
   }
   function injectSurfaceStyles() {
     if (document.getElementById("laSurfaceStyle")) return;
@@ -520,21 +522,16 @@
     style.textContent = SURFACE_CSS;
     document.head.appendChild(style);
   }
-  function chrome2(el, cls, id) {
-    el.className = cls;
-    if (id) el.id = id;
-    return chrome(el);
+  function chrome2(el3, cls, id) {
+    el3.className = cls;
+    if (id) el3.id = id;
+    return chrome(el3);
   }
-  function markerTitle(note) {
-    const said = (note.text || "").trim();
-    if (!said) return "an empty comment";
-    return said.length > 72 ? said.slice(0, 71) + "\u2026" : said;
-  }
-  function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick, onNoteClick }) {
+  function createNoteSurface({ mount: mount2, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick, onNoteClick }) {
     const describe2 = identify || describe;
     injectSurfaceStyles();
     const markers = chrome2(document.createElement("div"), "laMarkers", "laMarkers");
-    mount.appendChild(markers);
+    mount2.appendChild(markers);
     markers.addEventListener("click", (e) => {
       const hit = e.target.closest("[data-la-note]");
       if (!hit) return;
@@ -543,22 +540,22 @@
       onNoteClick?.(Number(hit.dataset.laNote));
     });
     const reqs = chrome2(document.createElement("div"), "laReqs", "laReqs");
-    mount.appendChild(reqs);
+    mount2.appendChild(reqs);
     const overlay = chrome2(document.createElement("div"), "laOverlay", "laOverlay");
-    if (mount !== document.body) overlay.style.position = "absolute";
-    mount.appendChild(overlay);
-    function place(el, r) {
+    if (mount2 !== document.body) overlay.style.position = "absolute";
+    mount2.appendChild(overlay);
+    function place(el3, r) {
       const base = markers.getBoundingClientRect();
-      el.style.left = r.left - base.left + "px";
-      el.style.top = r.top - base.top + "px";
-      el.style.width = r.width + "px";
-      el.style.height = r.height + "px";
+      el3.style.left = r.left - base.left + "px";
+      el3.style.top = r.top - base.top + "px";
+      el3.style.width = r.width + "px";
+      el3.style.height = r.height + "px";
     }
     function screenRect(t, note) {
       if (!note.box) {
-        const el = resolve(note.target);
-        if (!el) return null;
-        const r2 = el.getBoundingClientRect();
+        const el3 = resolve(note.target);
+        if (!el3) return null;
+        const r2 = el3.getBoundingClientRect();
         return { left: r2.left, top: r2.top, width: r2.width, height: r2.height };
       }
       if (targets.isViewbox(t)) {
@@ -584,14 +581,14 @@
       if (!r || !r.width || !r.height) return null;
       return { x: r.left + note.point.x * r.width, y: r.top + note.point.y * r.height };
     }
-    function placePoint(el, x, y) {
+    function placePoint(el3, x, y) {
       const base = markers.getBoundingClientRect();
-      el.style.left = x - base.left + "px";
-      el.style.top = y - base.top + "px";
+      el3.style.left = x - base.left + "px";
+      el3.style.top = y - base.top + "px";
     }
     function layout() {
-      markers.querySelectorAll(".laBox").forEach((el) => {
-        if (el !== rubber) el.remove();
+      markers.querySelectorAll(".laBox").forEach((el3) => {
+        if (el3 !== rubber) el3.remove();
       });
       for (const [id, g] of store.state.targets) {
         const t = targets.get(id);
@@ -604,10 +601,10 @@
             const p = screenPoint(t, note);
             if (!p) continue;
             const dot = document.createElement("div");
-            dot.className = "laBox laPoint" + (note.unread ? " unread" : "");
+            dot.className = "laBox laPoint" + (note.unread ? " unread" : "") + (note.id === hot ? " hot" : "") + (note.id === working ? " working" : "");
             dot.dataset.laTarget = id;
             dot.dataset.laNote = note.id;
-            dot.title = markerTitle(note);
+            dot.textContent = String(note.id);
             placePoint(dot, p.x, p.y);
             markers.appendChild(dot);
             continue;
@@ -615,12 +612,12 @@
           const r = screenRect(t, note);
           if (!r) continue;
           const box = document.createElement("div");
-          box.className = "laBox" + (note.kind === "element" ? " el" : "");
+          box.className = "laBox" + (note.kind === "element" ? " el" : "") + (note.id === hot ? " hot" : "");
           box.dataset.laTarget = id;
           box.dataset.laNote = note.id;
           const tag = document.createElement("span");
-          tag.className = "tag" + (note.unread ? " unread" : "");
-          tag.title = markerTitle(note);
+          tag.className = "tag" + (note.unread ? " unread" : "") + (note.id === working ? " working" : "");
+          tag.textContent = String(note.id);
           box.appendChild(tag);
           place(box, r);
           markers.appendChild(box);
@@ -630,13 +627,24 @@
       afterLayout?.();
     }
     let openKey = null;
+    let hot = null, working = null;
+    function setHot(id) {
+      if (hot === id) return;
+      hot = id;
+      layout();
+    }
+    function setWorking(id) {
+      if (working === id) return;
+      working = id;
+      layout();
+    }
     function layoutRequests() {
       reqs.textContent = "";
       const base = reqs.getBoundingClientRect();
       for (const r of requests ? requests() : []) {
-        const el = r.node && r.node.isConnected ? r.node : resolve(r.target);
-        if (!el) continue;
-        const b = tailRect(el);
+        const el3 = r.node && r.node.isConnected ? r.node : resolve(r.target);
+        if (!el3) continue;
+        const b = tailRect(el3);
         if (!b.width && !b.height) continue;
         const chip = document.createElement("button");
         chip.type = "button";
@@ -679,10 +687,10 @@
         dragMove(e);
         return;
       }
-      const el = topElementAt(e.clientX, e.clientY);
-      const basis = graphicBasis(el);
+      const el3 = topElementAt(e.clientX, e.clientY);
+      const basis = graphicBasis(el3);
       overlay.style.cursor = basis ? "crosshair" : "pointer";
-      setHover((basis || el).getBoundingClientRect());
+      setHover((basis || el3).getBoundingClientRect());
     });
     overlay.addEventListener("pointerleave", () => {
       if (!press) setHover(null);
@@ -692,8 +700,8 @@
         overlay.setPointerCapture(e.pointerId);
       } catch {
       }
-      const el = topElementAt(e.clientX, e.clientY);
-      press = { x: e.clientX, y: e.clientY, el, basis: graphicBasis(el), area: false, target: targets.hitTest(e.clientX, e.clientY) };
+      const el3 = topElementAt(e.clientX, e.clientY);
+      press = { x: e.clientX, y: e.clientY, el: el3, basis: graphicBasis(el3), area: false, shift: !!e.shiftKey, target: targets.hitTest(e.clientX, e.clientY) };
       setHover(null);
     });
     function clampedRegion(e) {
@@ -743,6 +751,7 @@
           x: press.x,
           y: press.y,
           targetId: press.target.id,
+          sticky: press.shift,
           box: r ? { x: r.left, y: r.top, w: r.width, h: r.height } : null
         }
       };
@@ -813,33 +822,33 @@
       const right = rect.left + rect.width, bottom = rect.top + rect.height;
       const picked = [];
       (function walk(parent) {
-        for (const el of parent.children) {
-          if (el.dataset && el.dataset.laUi != null) continue;
-          const r = el.getBoundingClientRect();
+        for (const el3 of parent.children) {
+          if (el3.dataset && el3.dataset.laUi != null) continue;
+          const r = el3.getBoundingClientRect();
           if (r.width && r.height) {
             const ix = Math.min(right, r.right) - Math.max(rect.left, r.left);
             const iy = Math.min(bottom, r.bottom) - Math.max(rect.top, r.top);
-            if (ix > 0 && iy > 0 && ix * iy / (r.width * r.height) >= 0.6 && getComputedStyle(el).visibility !== "hidden") {
-              picked.push(el);
+            if (ix > 0 && iy > 0 && ix * iy / (r.width * r.height) >= 0.6 && getComputedStyle(el3).visibility !== "hidden") {
+              picked.push(el3);
               continue;
             }
-          } else if (getComputedStyle(el).display === "none") {
+          } else if (getComputedStyle(el3).display === "none") {
             continue;
           }
-          if (el.tagName.toLowerCase() !== "svg") walk(el);
+          if (el3.tagName.toLowerCase() !== "svg") walk(el3);
         }
       })(document.body);
       return picked;
     }
     function commonAncestor(els) {
       let anc = els[0];
-      for (const el of els.slice(1)) {
-        while (!anc.contains(el)) anc = anc.parentElement;
+      for (const el3 of els.slice(1)) {
+        while (!anc.contains(el3)) anc = anc.parentElement;
       }
       return anc;
     }
-    function inFixed(el) {
-      for (let n = el; n && n !== document.body; n = n.parentElement) {
+    function inFixed(el3) {
+      for (let n = el3; n && n !== document.body; n = n.parentElement) {
         if (getComputedStyle(n).position === "fixed") return true;
       }
       return false;
@@ -847,7 +856,7 @@
     function addAreaNote(r, gesture) {
       const els = elementsInArea(r);
       const fixed = new Set(els.filter(inFixed));
-      const flow = els.filter((el) => !fixed.has(el));
+      const flow = els.filter((el3) => !fixed.has(el3));
       const anchorEls = flow.length ? flow : els;
       let anchor = anchorEls.length ? commonAncestor(anchorEls) : topElementAt(r.left + r.width / 2, r.top + r.height / 2);
       let b = anchor.getBoundingClientRect();
@@ -867,15 +876,15 @@
           w: round3(r.width / b.width),
           h: round3(r.height / b.height)
         },
-        elements: listed.map((el) => {
-          const d = describe2(el, true);
-          if (fixed.has(el)) d.fixed = true;
+        elements: listed.map((el3) => {
+          const d = describe2(el3, true);
+          if (fixed.has(el3)) d.fixed = true;
           return d;
         }),
         ...truncated ? { truncated } : {}
       }, gesture);
     }
-    function setActive2(v) {
+    function setActive(v) {
       overlay.style.display = v ? "block" : "none";
       if (!v) {
         setHover(null);
@@ -891,14 +900,18 @@
       reqs.remove();
       overlay.remove();
     }
-    return { markers, overlay, layout, setActive: setActive2, setOpenRequest, destroy };
+    return { markers, overlay, layout, setActive, setOpenRequest, setHot, setWorking, destroy };
   }
 
   // src/draw-surface.js
   var CFG = {
     width: 3,
     // stroke width, px
-    color: "#000",
+    color: "#17110C",
+    halo: "#FDFDFC",
+    // the wider pass under the ink, so black reads on a dark page
+    haloWidth: 2,
+    // px added to the stroke width for that pass
     lazyRadius: 4,
     // brush trails the pointer by this many px at full speed; the live jitter killer
     minLazyRadius: 1.5,
@@ -1028,18 +1041,7 @@
     const closed = isClosed(s, bbox);
     return { d: toPath(s, closed), bbox, closed };
   }
-  function drawStroke(ctx, pts) {
-    ctx.lineWidth = CFG.width;
-    ctx.strokeStyle = CFG.color;
-    ctx.fillStyle = CFG.color;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    if (pts.length === 1) {
-      ctx.beginPath();
-      ctx.arc(pts[0].x, pts[0].y, CFG.width / 2, 0, Math.PI * 2);
-      ctx.fill();
-      return;
-    }
+  function tracePath(ctx, pts) {
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length - 1; i++) {
@@ -1049,10 +1051,26 @@
     }
     const last = pts[pts.length - 1];
     ctx.lineTo(last.x, last.y);
-    ctx.stroke();
   }
-  function createDrawSurface({ mount, targets, store, ink, onStroke, visible }) {
-    const fixed = mount === document.body;
+  function drawStroke(ctx, pts) {
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (const [color, width] of [[CFG.halo, CFG.width + CFG.haloWidth], [CFG.color, CFG.width]]) {
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = width;
+      if (pts.length === 1) {
+        ctx.beginPath();
+        ctx.arc(pts[0].x, pts[0].y, width / 2, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      tracePath(ctx, pts);
+      ctx.stroke();
+    }
+  }
+  function createDrawSurface({ mount: mount2, targets, store, ink, onStroke, visible }) {
+    const fixed = mount2 === document.body;
     const canvas = chrome(document.createElement("canvas"));
     Object.assign(canvas.style, {
       position: fixed ? "fixed" : "absolute",
@@ -1062,7 +1080,7 @@
       cursor: "crosshair",
       touchAction: "none"
     });
-    mount.appendChild(canvas);
+    mount2.appendChild(canvas);
     const ctx = canvas.getContext("2d");
     function canvasOrigin() {
       if (fixed) return { x: 0, y: 0 };
@@ -1074,8 +1092,8 @@
     let bound = null;
     function resize() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const w = fixed ? innerWidth : mount.clientWidth;
-      const h = fixed ? innerHeight : mount.clientHeight;
+      const w = fixed ? innerWidth : mount2.clientWidth;
+      const h = fixed ? innerHeight : mount2.clientHeight;
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       canvas.style.width = w + "px";
@@ -1178,22 +1196,22 @@
       if (live) drawStroke(ctx, live);
       ctx.restore();
     }
-    function setActive2(v) {
+    function setActive(v) {
       canvas.style.pointerEvents = v ? "auto" : "none";
     }
     function destroy() {
       canvas.remove();
     }
-    setActive2(false);
+    setActive(false);
     resize();
-    return { canvas, resize, redraw, setActive: setActive2, destroy };
+    return { canvas, resize, redraw, setActive, destroy };
   }
 
   // src/ink-layer.js
-  function createInkLayer({ mount, targets }) {
+  function createInkLayer({ mount: mount2, targets }) {
     const anchor = chrome(document.createElement("div"));
     anchor.className = "laInkLayer";
-    mount.appendChild(anchor);
+    mount2.appendChild(anchor);
     const layers = /* @__PURE__ */ new Map();
     function layerFor(t) {
       let svg = layers.get(t.id);
@@ -1245,16 +1263,18 @@
       svg.textContent = "";
       for (const s of strokes) {
         if (!s.points || !s.points.length) continue;
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", pathData(s.points));
-        path.setAttribute("fill", "none");
-        path.setAttribute("stroke", s.color || "#000");
-        path.setAttribute("stroke-width", s.width || 3);
-        path.setAttribute("stroke-linecap", "round");
-        path.setAttribute("stroke-linejoin", "round");
-        path.setAttribute("vector-effect", "non-scaling-stroke");
-        path.dataset.laStroke = s.id;
-        svg.appendChild(path);
+        for (const [color, width] of [["#FDFDFC", (s.width || 3) + 2], [s.color || "#17110C", s.width || 3]]) {
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", pathData(s.points));
+          path.setAttribute("fill", "none");
+          path.setAttribute("stroke", color);
+          path.setAttribute("stroke-width", width);
+          path.setAttribute("stroke-linecap", "round");
+          path.setAttribute("stroke-linejoin", "round");
+          path.setAttribute("vector-effect", "non-scaling-stroke");
+          path.dataset.laStroke = s.id;
+          svg.appendChild(path);
+        }
       }
     }
     function drop(id) {
@@ -1272,22 +1292,22 @@
   var ATTR = "data-redpen-context";
   function collectContext(startEl, info) {
     const chain = [];
-    for (let el = startEl; el && el.nodeType === 1; el = el.parentElement) chain.push(el);
+    for (let el3 = startEl; el3 && el3.nodeType === 1; el3 = el3.parentElement) chain.push(el3);
     let out = null;
-    for (const el of chain.reverse()) {
+    for (const el3 of chain.reverse()) {
       try {
-        let v = el.redpenContext;
+        let v = el3.redpenContext;
         if (typeof v === "function") v = v(info);
-        if (!v && el.hasAttribute(ATTR)) {
+        if (!v && el3.hasAttribute(ATTR)) {
           try {
-            v = JSON.parse(el.getAttribute(ATTR));
+            v = JSON.parse(el3.getAttribute(ATTR));
           } catch {
             v = null;
           }
         }
         if (v && typeof v === "object") out = { ...out || {}, ...v };
       } catch (err) {
-        console.warn("[redpen] context provider failed", el, err);
+        console.warn("[redpen] context provider failed", el3, err);
       }
     }
     if (out === null) return null;
@@ -1302,7 +1322,7 @@
   // src/engine.js
   function create(opts = {}) {
     const key = opts.key ?? location.pathname;
-    const mount = opts.mount ?? document.body;
+    const mount2 = opts.mount ?? document.body;
     const storage = opts.storage ?? localStorage;
     const identify = opts.identify;
     const targets = createTargets();
@@ -1368,9 +1388,9 @@
         return { key: key2, answer: a.said, askedWas: a.q, at: a.at || null };
       });
     }
-    const ink = createInkLayer({ mount, targets });
+    const ink = createInkLayer({ mount: mount2, targets });
     const noteSurface = createNoteSurface({
-      mount,
+      mount: mount2,
       targets,
       store,
       identify,
@@ -1397,12 +1417,12 @@
         store.save();
         noteSurface.layout();
         emit("change", { action: "add", item });
-        emit("item:add", { item });
+        emit("item:add", { item, sticky: !!(gesture && gesture.info && gesture.info.sticky) });
       },
       afterLayout: () => emit("layout", {})
     });
     const drawSurface = createDrawSurface({
-      mount,
+      mount: mount2,
       targets,
       store,
       ink,
@@ -1504,7 +1524,7 @@
       }
       return { targets: out };
     }
-    function review() {
+    function review2() {
       const items = [];
       requests.forEach((r, i) => {
         const v = requestView(r, i);
@@ -1543,6 +1563,13 @@
           });
         }
       }
+      const strokes = [];
+      for (const [id, g] of Object.entries(d.targets)) {
+        if (!g.strokes.length) continue;
+        if (id !== PAGE && !bases[id]) bases[id] = { basis: g.basis, coords: g.coords, ...g.viewBox ? { viewBox: g.viewBox } : {} };
+        for (const s of g.strokes) strokes.push({ ...id === PAGE ? {} : { target_id: id }, ...s });
+      }
+      const pageBox = d.targets[PAGE] && d.targets[PAGE].viewBox;
       const asked = requests.map((r, i) => requestView(r, i));
       return {
         page: location.pathname.split("/").pop() || location.pathname,
@@ -1550,6 +1577,7 @@
         unanswered: asked.filter((v) => !v.answered).length,
         orphaned: orphans().length,
         resolved: items.filter((i) => i.kind === "comment" && i.resolved).length,
+        ...strokes.length ? { strokes, ...pageBox ? { viewBox: pageBox } : {} } : {},
         ...coords ? { coords } : {},
         ...Object.keys(bases).length ? { targets: bases } : {},
         items
@@ -1649,6 +1677,28 @@
         repaint();
         emit("change", { action: "remove", item: hit.item });
       },
+      // Put removed notes back, for an undo. Each item is what items() handed out,
+      // a copy carrying target_id; it returns to its group in id order.
+      restore(items) {
+        let changed = false;
+        for (const it of items || []) {
+          const { target_id: targetId, ...note } = it;
+          const g = store.group(targetId ?? PAGE);
+          if (g.notes.some((n) => n.id === note.id)) continue;
+          g.notes.push(note);
+          g.notes.sort((a, b) => a.id - b.id);
+          changed = true;
+        }
+        if (!changed) return false;
+        store.save();
+        repaint();
+        emit("change", { action: "restore" });
+        return true;
+      },
+      // purely visual, like openRequest: the marker a list row is hovering, and
+      // the marker whose newest request is running
+      highlight: (id) => noteSurface.setHot(id ?? null),
+      working: (id) => noteSurface.setWorking(id ?? null),
       undoStroke(targetId) {
         const groups = eachGroup(targetId).filter(([, g]) => g.strokes.length);
         if (!groups.length) return;
@@ -1732,7 +1782,7 @@
         emit("change", { action: "answer", request: view });
       },
       data,
-      review,
+      review: review2,
       layout: repaint,
       // true once the stored blob has been read. Nothing may be WRITTEN before
       // this: the store starts empty and a write from that window commits an empty
@@ -1766,9 +1816,9 @@
       if (destroyed) return;
       repaint();
       const boxless = (r) => {
-        const el = r.node && r.node.isConnected ? r.node : resolve(r.target);
-        if (!el) return true;
-        const b = el.getBoundingClientRect();
+        const el3 = r.node && r.node.isConnected ? r.node : resolve(r.target);
+        if (!el3) return true;
+        const b = el3.getBoundingClientRect();
         return !b.width && !b.height;
       };
       const pending = [...store.state.targets].some(([, g]) => g.notes.some((n) => n.target && !resolve(n.target))) || requests.some(boxless);
@@ -1778,280 +1828,2258 @@
     return pen2;
   }
 
-  // src/ui.js
-  var INK = "#17110C";
-  var FILL = "#FDFDFC";
-  var MONO = 'ui-monospace, "SF Mono", Menlo, monospace';
-  var pillStyle = {
-    font: `600 11px/1 ${MONO}`,
-    letterSpacing: "0.12em",
-    padding: "9px 14px",
-    border: "1px solid " + INK,
-    borderRadius: "999px",
-    background: FILL,
-    color: INK,
-    cursor: "pointer"
-  };
-  var PANEL_CSS = `
-  #laNotes { position: fixed; top: 16px; left: 16px; width: 258px; box-sizing: border-box; z-index: 99993;
-    background: rgba(20, 20, 20, .9); color: #F2F2F0; border-radius: 8px; padding: 14px;
-    font: 12px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-  #laNotes h2 { font-size: 12px; margin: 0 0 4px; letter-spacing: .04em; text-transform: uppercase; opacity: .7; }
-  #laNotes .hint { margin: 0; opacity: .6; }
-  #laNoteList:not(:empty) { margin-top: 10px; }
-  .laNoteRow { display: grid; grid-template-columns: 18px 1fr 20px; gap: 6px; align-items: center; margin: 5px 0; }
-  .laNoteRow .num { color: #e5484d; font-weight: 700; text-align: center; }
-  .laNoteRow input { width: 100%; box-sizing: border-box; background: #0d0d0d; color: #F2F2F0;
-    border: 1px solid #2c2c2c; border-radius: 4px; padding: 4px 6px; font: inherit; }
-  .laNoteRow button { background: none; border: 0; color: #e5484d; cursor: pointer; font-size: 16px; line-height: 1; padding: 0; }
-  .laNoteRow.stale { opacity: .45; }
-  #laNotes.failed { outline: 2px solid #e5484d; }
-  #laNotes .laSaveWarn { display: none; margin: 10px 0 0; padding-top: 8px;
-    border-top: 1px solid #4a2326; color: #ff9ea1; }
-  #laNotes.failed .laSaveWarn { display: block; }
-`;
-  var tools = [];
-  var copyRow = null;
-  var toolRow = null;
-  var copyBtn = null;
-  function ensureUI() {
-    if (toolRow) return;
-    const bar = chrome(document.createElement("div"));
-    Object.assign(bar.style, {
-      position: "fixed",
-      right: "14px",
-      bottom: "14px",
-      zIndex: 99995,
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "flex-end",
-      gap: "8px"
-    });
-    copyRow = document.createElement("div");
-    Object.assign(copyRow.style, { display: "flex", gap: "10px", alignItems: "center" });
-    toolRow = document.createElement("div");
-    Object.assign(toolRow.style, { display: "flex", gap: "8px", alignItems: "center" });
-    copyBtn = document.createElement("button");
-    copyBtn.textContent = "COPY JSON";
-    Object.assign(copyBtn.style, pillStyle, { background: INK, color: FILL });
-    copyBtn.addEventListener("click", () => {
-      const flash = (t) => {
-        copyBtn.textContent = t;
-        setTimeout(() => {
-          copyBtn.textContent = "COPY JSON";
-        }, 1200);
-      };
-      if (!navigator.clipboard) return flash("COPY FAILED");
-      navigator.clipboard.writeText(json()).then(() => flash("COPIED \u2713"), () => flash("COPY FAILED"));
-    });
-    copyRow.appendChild(copyBtn);
-    bar.append(copyRow, toolRow);
-    document.body.appendChild(bar);
+  // src/wire.js
+  var attached = null;
+  var RUNNING = /* @__PURE__ */ new Set(["sent", "acked", "landing"]);
+  function nearestKey(el3) {
+    for (let node = el3; node && node.nodeType === 1; node = node.parentElement) {
+      const dataId = node.getAttribute("data-id");
+      const id = node.getAttribute("id");
+      if (dataId) return { key: dataId, selector: `[data-id="${CSS.escape(dataId)}"]`, tag: node.tagName.toLowerCase() };
+      if (id) return { key: id, selector: `#${CSS.escape(id)}`, tag: node.tagName.toLowerCase() };
+    }
+    return null;
   }
-  function register(tool) {
-    ensureUI();
-    const entry = { ...tool, checked: true };
-    tools.push(entry);
-    const pick = document.createElement("label");
-    Object.assign(pick.style, {
-      display: "flex",
-      alignItems: "center",
-      gap: "4px",
-      font: `600 10px/1 ${MONO}`,
-      letterSpacing: "0.1em",
-      color: INK,
-      cursor: "pointer"
-    });
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = true;
-    Object.assign(cb.style, { accentColor: INK, margin: "0" });
-    cb.addEventListener("change", () => {
-      entry.checked = cb.checked;
-    });
-    pick.append(cb, document.createTextNode(entry.label));
-    copyRow.insertBefore(pick, copyBtn);
-    const clearBtn = document.createElement("button");
-    clearBtn.textContent = "\xD7";
-    clearBtn.title = "clear " + entry.label.toLowerCase();
-    Object.assign(clearBtn.style, pillStyle, {
-      padding: "0",
-      width: "31px",
-      height: "31px",
-      fontSize: "15px",
-      letterSpacing: "0"
-    });
-    clearBtn.addEventListener("click", () => entry.clear());
-    entry.pill = document.createElement("button");
-    Object.assign(entry.pill.style, pillStyle);
-    entry.pill.addEventListener("click", () => setActive(entry, !entry.getOn()));
-    toolRow.append(clearBtn, entry.pill);
-    syncPill(entry);
-    return { setOn: (v) => setActive(entry, v) };
+  function decode(line) {
+    const raw = String(line ?? "");
+    if (raw.trimStart()[0] !== "{") return { kind: "progress", text: raw };
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      if (/"redpen"\s*:/.test(raw)) return { kind: "mangled", text: raw };
+      return { kind: "progress", text: raw };
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { kind: "progress", text: raw };
+    if (!Object.prototype.hasOwnProperty.call(parsed, "redpen")) return { kind: "progress", text: raw };
+    if (typeof parsed.reply !== "string" || !parsed.reply) return { kind: "broken", text: raw };
+    return { kind: "reply", text: parsed.reply, append: parsed.append === true };
   }
-  function setActive(entry, v) {
-    if (v) {
-      for (const t of tools) if (t !== entry && t.getOn()) {
-        t.setOn(false);
-        syncPill(t);
+  function payloadFor(request) {
+    const item = request.item || null;
+    const projection = request.projection || {};
+    const history = request.history || null;
+    const { thread, ...bare } = item || {};
+    const selector = item && item.anchor && item.anchor.selector;
+    const el3 = selector ? document.querySelector(selector) : null;
+    return {
+      kind: "comment",
+      page: projection.page,
+      said: request.ask,
+      ...request.turn > 1 ? { turn: request.turn } : {},
+      ...history ? {
+        thread: history.pairs,
+        ...history.earlier ? { earlier: history.earlier } : {}
+      } : {},
+      item: item ? bare : null,
+      // The coordinate rule travels with the item, because the item's geometry is
+      // expressed in that rule and reads as fractions of the wrong box without it.
+      ...item && item.target_id ? { target: (projection.targets || {})[item.target_id] || null } : projection.coords ? { coords: projection.coords } : {},
+      ...el3 ? { region: nearestKey(el3) } : {}
+    };
+  }
+  function createTransport(wire) {
+    let sink = null;
+    let off2 = null;
+    const mine = /* @__PURE__ */ new Set();
+    function onFrame(rec, frame) {
+      if (!sink || !mine.has(rec.id)) return;
+      if (RUNNING.has(rec.state)) sink.state(rec.id, rec.state);
+      const line = frame && typeof frame.text === "string" ? frame.text : rec.state === "acked" && rec.text ? rec.text : "";
+      if (!line) return;
+      const said = decode(line);
+      if (said.kind === "reply") return void sink.reply(rec.id, said.text, { append: said.append });
+      if (said.kind === "mangled") {
+        sink.progress(rec.id, said.text);
+        return void sink.note(rec.id, "the agent sent a reply that did not survive the trip");
       }
-    }
-    entry.setOn(v);
-    syncPill(entry);
-  }
-  function syncPill(t) {
-    const on = t.getOn();
-    t.pill.textContent = on ? t.labelOn || t.label : t.label;
-    t.pill.style.background = on ? INK : FILL;
-    t.pill.style.color = on ? FILL : INK;
-  }
-  function syncPills() {
-    for (const t of tools) if (t.pill) syncPill(t);
-  }
-  var dataSource = null;
-  function setDataSource(fn) {
-    dataSource = fn;
-  }
-  function json() {
-    const out = { file: location.pathname.split("/").pop() || location.pathname };
-    if (dataSource) {
-      Object.assign(out, dataSource(Object.fromEntries(tools.map((t) => [t.id, t.checked]))));
-    }
-    for (const t of tools) if (t.checked && t.getData) out[t.id] = t.getData();
-    return JSON.stringify(out, null, 2);
-  }
-  function off() {
-    for (const t of tools) if (t.getOn()) {
-      t.setOn(false);
-      syncPill(t);
-    }
-  }
-  function attachNotesPanel(pen2) {
-    if (!document.getElementById("laPanelStyle")) {
-      const style = mark(document.createElement("style"));
-      style.id = "laPanelStyle";
-      style.textContent = PANEL_CSS;
-      document.head.appendChild(style);
-    }
-    const panel = chrome(document.createElement("aside"));
-    panel.id = "laNotes";
-    panel.innerHTML = `<h2>Notes</h2>
-  <p class="hint">Toggle NOTES, then click an element or drag a box across an area. COPY JSON sends it all back.</p>
-  <div id="laNoteList"></div>
-  <p class="laSaveWarn">Not saving. Storage is full or unavailable, so these notes only exist in this tab. COPY JSON before you close it.</p>`;
-    document.body.appendChild(panel);
-    const list = panel.querySelector("#laNoteList");
-    const rowEls = /* @__PURE__ */ new Map();
-    function renderRows() {
-      list.innerHTML = "";
-      rowEls.clear();
-      for (const it of pen2.items()) {
-        const row = document.createElement("div");
-        row.className = "laNoteRow";
-        row.title = it.target && it.target.selector || it.target_id;
-        const num = document.createElement("span");
-        num.className = "num";
-        num.textContent = it.id;
-        const input = document.createElement("input");
-        input.value = it.text;
-        input.placeholder = "what's wrong here";
-        input.addEventListener("input", () => pen2.setNote(it.id, input.value));
-        const del = document.createElement("button");
-        del.textContent = "\xD7";
-        del.title = "delete";
-        del.addEventListener("click", () => pen2.remove(it.id));
-        row.append(num, input, del);
-        list.appendChild(row);
-        rowEls.set(it.id, { row, item: it });
+      if (said.kind === "broken") {
+        sink.progress(rec.id, said.text);
+        return void sink.note(rec.id, "the agent marked a reply that carried no words");
       }
-      markStale();
+      sink.progress(rec.id, said.text);
     }
-    function markStale() {
-      for (const { row, item } of rowEls.values()) row.classList.toggle("stale", !!item.target && !resolve(item.target));
-    }
-    pen2.addEventListener("change", (e) => {
-      const { action, item } = e.detail;
-      if (action === "note") return;
-      if (action === "add" || action === "remove" || action === "clear" || action === "load") {
-        renderRows();
-        if (action === "add") rowEls.get(item.id)?.row.querySelector("input").focus();
-      }
-    });
-    pen2.addEventListener("layout", markStale);
-    pen2.addEventListener("save:error", () => panel.classList.add("failed"));
-    if (pen2.saveFailed?.()) panel.classList.add("failed");
-    renderRows();
-    return { panel, renderRows };
+    return {
+      label: "agent",
+      attach(s) {
+        sink = s;
+        off2 = wire.on(onFrame);
+      },
+      detach() {
+        off2?.();
+        off2 = null;
+        sink = null;
+        mine.clear();
+        if (attached && attached.transport === this) attached = null;
+      },
+      // redpen mints the id, because clayjs emits the first frame from inside
+      // send(): a mapping built from the return value would be built too late to
+      // route it.
+      send(request) {
+        const handle = wire.send(payloadFor(request), { id: request.id, text: request.ask });
+        if (!handle || !handle.id) return null;
+        mine.add(handle.id);
+        handle.done.then(
+          (final) => {
+            mine.delete(handle.id);
+            sink?.state(handle.id, final.state, final.error);
+          },
+          (err) => {
+            mine.delete(handle.id);
+            sink?.state(handle.id, "error", err && err.message ? err.message : "the wire failed");
+          }
+        );
+        return { id: handle.id };
+      },
+      // clayjs refuses a cancel that arrived too late, so the rule lives there
+      // rather than being restated here where the two could quietly disagree.
+      cancel: (id) => wire.cancel(id)
+    };
   }
-  function attachKeys(pen2) {
-    const onKey = (e) => {
-      if (pen2.mode() !== "draw") return;
-      if (e.target.closest && e.target.closest("input, textarea")) return;
-      if ((e.metaKey || e.ctrlKey) && e.key === "z") {
-        e.preventDefault();
-        pen2.undoStroke();
+  function attach(review2, opts = {}) {
+    const wire = window.clay && window.clay.wire;
+    if (!wire || typeof wire.send !== "function" || typeof wire.on !== "function") {
+      console.warn("[redpen] no clay.wire on this page: comments stay in the clipboard");
+      return null;
+    }
+    if (attached) {
+      if (attached.review !== review2) console.warn("[redpen] the wire is already attached to this page");
+      return attached;
+    }
+    if (review2.thread && review2.thread.connected && review2.thread.connected()) {
+      console.warn("[redpen] a transport is already connected to this review");
+      return null;
+    }
+    const transport = opts.transport || createTransport(wire);
+    const disconnect = review2.thread.connect(transport);
+    attached = {
+      review: review2,
+      transport,
+      send: (request) => transport.send(request),
+      detach() {
+        disconnect();
+        attached = null;
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return attached;
+  }
+
+  // src/thread.js
+  var CAP = { line: 400, lines: 50, reply: 32 * 1024, say: 2e3, pairs: 8, history: 16 * 1024 };
+  var RUNNING2 = /* @__PURE__ */ new Set(["sent", "acked", "landing"]);
+  var UNFINISHED = /* @__PURE__ */ new Set(["queued", "parked", "sent", "acked", "landing"]);
+  function createThread({ pen: pen2, listeners, prefs, onTurn }) {
+    const token = Math.random().toString(36).slice(2, 6);
+    let transport = null;
+    let inflight = null;
+    let detachWhenIdle = false;
+    let opener = null;
+    const byRequest = /* @__PURE__ */ new Map();
+    const now = () => (/* @__PURE__ */ new Date()).toISOString();
+    const cut = (s, n) => s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
+    function noteById(id) {
+      return pen2.items().find((n) => n.id === id) || null;
+    }
+    const showTurn = (noteId, turnId) => onTurn?.(noteId, turnId);
+    function withTurn(requestId, fn) {
+      const at = byRequest.get(requestId);
+      if (!at) return false;
+      let touched = false;
+      pen2.updateNote(at.noteId, (note) => {
+        const turn = (note.thread || []).find((t) => t.id === at.turnId);
+        if (!turn) return;
+        touched = true;
+        fn(turn, note);
+      });
+      if (touched) showTurn(at.noteId, at.turnId);
+      return touched;
+    }
+    function settleTurn(requestId, state, error) {
+      const ok = withTurn(requestId, (turn) => {
+        turn.state = state;
+        turn.endedAt = now();
+        if (error) turn.error = cut(String(error), CAP.line);
+      });
+      byRequest.delete(requestId);
+      if (inflight === requestId) inflight = null;
+      if (detachWhenIdle && !inflight) {
+        disconnect();
+        return ok;
+      }
+      drain();
+      return ok;
+    }
+    const sink = {
+      state(requestId, state, error) {
+        if (!RUNNING2.has(state)) return settleTurn(requestId, state, error);
+        return withTurn(requestId, (turn) => {
+          turn.state = state;
+        });
+      },
+      progress(requestId, line) {
+        const said = cut(String(line ?? "").trim(), CAP.line);
+        if (!said) return false;
+        return withTurn(requestId, (turn) => {
+          const trail = turn.progress || (turn.progress = []);
+          trail.push(said);
+          if (trail.length > CAP.lines) {
+            turn.progressDropped = (turn.progressDropped || 0) + (trail.length - CAP.lines);
+            trail.splice(0, trail.length - CAP.lines);
+          }
+        });
+      },
+      reply(requestId, text, opts = {}) {
+        const said = String(text ?? "");
+        if (!said) return false;
+        let rang = false, back = false;
+        const ok = withTurn(requestId, (turn, note) => {
+          turn.reply = cut(opts.append && turn.reply ? turn.reply + said : said, CAP.reply);
+          turn.repliedAt = now();
+          if (note.resolved) {
+            delete note.resolved;
+            back = true;
+          }
+          if (reading === note.id) return;
+          rang = !note.unread;
+          note.unread = true;
+        });
+        if (rang || back) pen2.layout();
+        return ok;
+      },
+      // The transport's own remark about an exchange, which is how a mangled reply
+      // line becomes visible without the thread knowing what a status line is.
+      note(requestId, line) {
+        const said = cut(String(line ?? "").trim(), CAP.line);
+        if (!said) return false;
+        return withTurn(requestId, (turn) => {
+          turn.note = said;
+        });
+      }
+    };
+    let reading = null;
+    function historyFor(thread2) {
+      if (!thread2 || thread2.length < 2) return null;
+      const pairs = thread2.map((t, i) => {
+        const last = i === thread2.length - 1;
+        const you = last ? t.ask : cut(t.ask, CAP.say);
+        if (t.reply) return { you, agent: cut(t.reply, CAP.say) };
+        if (UNFINISHED.has(t.state)) return { you };
+        if (t.state === "done") return { you, done: true };
+        return { you, failed: t.error || "this one did not finish" };
+      });
+      let earlier = 0;
+      while (pairs.length > CAP.pairs || pairs.length > 1 && JSON.stringify(pairs).length > CAP.history) {
+        pairs.shift();
+        earlier++;
+      }
+      return { pairs, earlier };
+    }
+    function sendTurn(noteId, said) {
+      if (!transport || detachWhenIdle) return null;
+      if (!pen2.loaded()) return null;
+      const text = String(said ?? "");
+      if (!text.trim()) return null;
+      const note = noteById(noteId);
+      if (!note) return null;
+      const turnId = "t" + ((note.thread ? note.thread.length : 0) + 1);
+      const queued = !!inflight;
+      const turn = {
+        id: turnId,
+        request: `rp-${token}-${noteId}-${turnId}`,
+        // Frozen at send time and never rewritten, so a reworded comment cannot
+        // silently claim the agent was answering something it never saw. A stored
+        // answer's question follows the same rule for the same reason.
+        ask: text,
+        at: now(),
+        state: queued ? "queued" : "sent"
+      };
+      let stored = null;
+      pen2.updateNote(noteId, (n) => {
+        stored = n.thread || (n.thread = []);
+        stored.push(turn);
+        delete n.draft;
+        delete n.resolved;
+      });
+      if (!stored) return null;
+      if (queued) showTurn(noteId, turnId);
+      else dispatch(noteId, turnId);
+      return turn;
+    }
+    function dispatch(noteId, turnId) {
+      const note = noteById(noteId);
+      const thread2 = note && note.thread || [];
+      const at = thread2.findIndex((t) => t.id === turnId);
+      if (at < 0) return;
+      const requestId = thread2[at].request;
+      byRequest.set(requestId, { noteId, turnId });
+      inflight = requestId;
+      pen2.updateNote(noteId, (n) => {
+        for (const t of n.thread || []) if (t.id === turnId) {
+          t.state = "sent";
+          delete t.stalled;
+        }
+      });
+      showTurn(noteId, turnId);
+      const projection = pen2.review();
+      const history = historyFor(thread2.slice(0, at + 1));
+      let ok = null;
+      try {
+        ok = transport.send({
+          id: requestId,
+          ask: thread2[at].ask,
+          turn: at + 1,
+          item: projection.items.find((i) => i.kind === "comment" && i.id === noteId) || null,
+          projection,
+          ...history ? { history } : {}
+        });
+      } catch (err) {
+        console.warn("[redpen] the transport threw", err);
+      }
+      if (!ok) settleTurn(requestId, "error", "this could not be sent");
+    }
+    function drain() {
+      if (!transport || inflight || detachWhenIdle) return;
+      let pick = null;
+      for (const note of pen2.items()) {
+        for (const turn of note.thread || []) {
+          if (turn.state !== "queued") continue;
+          if (!pick || turn.at < pick.at) pick = { noteId: note.id, turnId: turn.id, at: turn.at };
+        }
+      }
+      if (pick) dispatch(pick.noteId, pick.turnId);
+    }
+    function sweepUnfinished() {
+      pen2.updateNotes((note) => {
+        if (!note.thread) return false;
+        let changed = false;
+        for (const turn of note.thread) {
+          if (turn.state === "queued") {
+            turn.state = "parked";
+            delete turn.stalled;
+            changed = true;
+            continue;
+          }
+          if (turn.state === "parked") {
+            if (turn.stalled) {
+              delete turn.stalled;
+              changed = true;
+            }
+            continue;
+          }
+          if (!RUNNING2.has(turn.state)) continue;
+          turn.state = "unknown";
+          turn.endedAt = now();
+          changed = true;
+        }
+        return changed;
+      });
+    }
+    function disconnect(force = false) {
+      if (!transport) return;
+      if (inflight && !force) {
+        detachWhenIdle = true;
+        return;
+      }
+      const t = transport;
+      transport = null;
+      inflight = null;
+      detachWhenIdle = false;
+      byRequest.clear();
+      t.detach?.();
+      showTurn(null, null);
+    }
+    function announce(id) {
+      if (!listeners.size && !transport) return;
+      const review2 = pen2.review();
+      const item = review2.items.find((i) => i.kind === "comment" && i.id === id);
+      if (!item || !item.said || !item.said.trim()) return;
+      for (const fn of [...listeners]) {
+        try {
+          fn(item, review2);
+        } catch (err) {
+          console.warn("[redpen] onComment failed", err);
+        }
+      }
+      sendTurn(id, item.said);
+    }
+    function pending() {
+      const comments = [], drafts = [];
+      for (const n of pen2.items()) {
+        if (n.resolved) continue;
+        const threaded = !!(n.thread && n.thread.length);
+        if (!threaded && String(n.text || "").trim()) comments.push(n.id);
+        else if (threaded && n.draft && n.draft.trim()) drafts.push(n.id);
+      }
+      return { comments, drafts, count: comments.length + drafts.length };
+    }
+    function sendPending() {
+      if (!transport || detachWhenIdle || !pen2.loaded()) return 0;
+      let started = 0;
+      const p = pending();
+      const went = (id, turnId) => {
+        const t = (noteById(id)?.thread || []).find((x) => x.id === turnId);
+        return !!t && t.state !== "error";
+      };
+      for (const id of p.comments) {
+        const before = (noteById(id)?.thread || []).length;
+        announce(id);
+        const after = noteById(id)?.thread || [];
+        if (after.length > before && went(id, after[after.length - 1].id)) started++;
+      }
+      for (const id of p.drafts) {
+        const said = noteById(id).draft;
+        pen2.updateNote(id, (n) => {
+          delete n.draft;
+        });
+        const turn = thread.send(id, said);
+        if (turn && went(id, turn.id)) started++;
+        else if (!turn) pen2.updateNote(id, (n) => {
+          n.draft = said;
+        });
+      }
+      return started;
+    }
+    const thread = {
+      // Returns its own disconnect, and refuses a second transport rather than
+      // replacing the first: two would each believe they own `inflight`, and the
+      // one-request rule is the only thing keeping two agents off one file.
+      connect(t) {
+        if (!t || typeof t.send !== "function") return () => {
+        };
+        if (transport) {
+          console.warn("[redpen] a transport is already connected");
+          return () => {
+          };
+        }
+        transport = t;
+        t.attach?.(sink);
+        showTurn(null, null);
+        return () => {
+          if (transport === t) disconnect();
+        };
+      },
+      // The one queued turn a reload left behind. Live queueing drains itself;
+      // this is the hand on the button that the reload rule deliberately removed.
+      resume(noteId, turnId) {
+        if (!transport || inflight) return false;
+        const note = noteById(noteId);
+        const turn = (note && note.thread || []).find((t) => t.id === turnId);
+        if (!turn || turn.state !== "parked") return false;
+        dispatch(noteId, turnId);
+        return true;
+      },
+      // Done with this comment, which is not the same as the agent succeeding. A
+      // running request is left running: cancel is refused once a request reaches
+      // landing, so "resolve cancels" is a promise redpen cannot keep, and the
+      // agent is mid-edit of your file either way.
+      resolve(noteId, on = true) {
+        const ok = pen2.updateNote(noteId, (n) => {
+          if (on) n.resolved = now();
+          else delete n.resolved;
+        });
+        if (ok) pen2.layout();
+        return ok;
+      },
+      send: sendTurn,
+      open(noteId) {
+        opener?.(noteId);
+      },
+      setOpener(fn) {
+        opener = typeof fn === "function" ? fn : null;
+      },
+      // A deep copy, because items() shares a note's nested objects by reference:
+      // a host that edited what it was given would change what the store writes
+      // without ever saving, which looks like it works until it does not.
+      of(noteId) {
+        const note = noteById(noteId);
+        if (!note || !note.thread) return [];
+        return Object.freeze(JSON.parse(JSON.stringify(note.thread)).map(Object.freeze));
+      },
+      connected: () => !!transport,
+      busy: () => !!inflight,
+      transport: () => transport,
+      reading: (id) => {
+        reading = id ?? null;
+      },
+      announce,
+      pending,
+      sendPending,
+      sweepUnfinished,
+      disconnect
+    };
+    return thread;
+  }
+
+  // src/popover.js
+  var CANCELLABLE = /* @__PURE__ */ new Set(["sent", "acked"]);
+  var TURN_LABEL = {
+    queued: "waiting for the wire",
+    // Its own state rather than `queued` plus a flag. Two things that had to be
+    // read together is what let drain() pick up a turn the reload had parked and
+    // send it with nobody's hand on the button.
+    parked: "waiting for you to send it",
+    sent: "sending to the agent",
+    acked: "the agent is working",
+    landing: "waiting for the change",
+    error: "the agent failed",
+    // `wire serve` signals rather than kills, and lets a handler that is
+    // mid-write finish, so the file may still change after this.
+    cancelled: "the agent was asked to stop",
+    unknown: "this was still running when the page was closed"
+  };
+  function turnLine(turn) {
+    if (turn.state === "error") return turn.error || TURN_LABEL.error;
+    if (turn.state === "landing" && turn.reply) return "answered, waiting for the change";
+    if (turn.state === "done") return turn.reply ? "" : "finished with nothing said, the change is on the page";
+    return TURN_LABEL[turn.state] || turn.state;
+  }
+  function dotClass(state) {
+    if (RUNNING2.has(state)) return "working";
+    if (state === "done") return "done";
+    if (state === "error") return "error";
+    return "";
+  }
+  var clock = (iso) => {
+    const t = iso ? new Date(iso) : null;
+    return t && !isNaN(t) ? t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+  };
+  var firstLine = (text) => String(text || "").split("\n")[0].trim().slice(0, 72) || "an empty comment";
+  function elementLabel(target, kind) {
+    const t = target || {};
+    const tag = t.tag || kind || "element";
+    if (t.id) return tag + "#" + t.id;
+    if (t.classes && t.classes.length) return tag + "." + t.classes[0];
+    return tag;
+  }
+  function copyText(text, done, fail) {
+    const fallback = () => {
+      const ta = chrome(el("textarea"));
+      ta.value = text;
+      ta.style.cssText = "position:fixed;top:-1000px;left:0";
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch {
+      }
+      ta.remove();
+      ok ? done() : fail?.();
+    };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  }
+  var el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  function afterScroll(node, fn) {
+    const r = node.getBoundingClientRect();
+    const onScreen = r.top >= 0 && r.bottom <= innerHeight;
+    if (!onScreen) node.scrollIntoView({ block: "center", behavior: "smooth" });
+    let last = null, still = 0, frames = 0;
+    const step = () => {
+      const y = node.getBoundingClientRect().top;
+      if (last !== null && Math.abs(y - last) < 0.5) still++;
+      else still = 0;
+      last = y;
+      if (still >= 3 || frames++ > 120) return fn();
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+  function createPopover({ pen: pen2, thread, prefs, toast, onChange, anchor, step }) {
+    const pop = chrome(el("div", "rprPop rpPop"));
+    pop.hidden = true;
+    pop.dataset.rpTheme = "light";
+    const eyebrow = el("span", "rprEyebrow");
+    const moreBtn = el("button", "rprX rpPopMore", "\u22EF");
+    moreBtn.title = "More";
+    const closeBtn = el("button", "rprX rpPopClose", "\xD7");
+    closeBtn.title = "Close";
+    const top = el("div", "rprTop rpPopTop");
+    top.append(eyebrow, moreBtn, closeBtn);
+    const menu = el("div", "rpPopMenu");
+    menu.hidden = true;
+    const resolveAct = el("button", null, "Resolve");
+    resolveAct.dataset.act = "resolve";
+    const copyAct = el("button", null, "Copy this comment");
+    copyAct.dataset.act = "copy";
+    const deleteAct = el("button", "danger", "Delete\u2026");
+    deleteAct.dataset.act = "delete";
+    menu.append(resolveAct, copyAct, deleteAct);
+    const was = el("div", "rprWas");
+    was.hidden = true;
+    const wasLabel = el("b", null, "answered when the question read");
+    const wasText = el("span");
+    const stillBtn = el("button", "rprStill", "still stands");
+    was.append(wasLabel, wasText, stillBtn);
+    const question = el("p", "rprQ");
+    question.hidden = true;
+    const threadBox = el("div", "rprThread");
+    threadBox.hidden = true;
+    const field = el("textarea", "rpField");
+    field.placeholder = "what's wrong here";
+    const foot = el("div", "rprFoot rpPopFoot");
+    const leftBtn = el("button", "rpLeft", "\u2039 prev");
+    const spacer = el("span", "rprSpacer");
+    const hint = el("span", "rprHint", "\u2318\u21B5 done");
+    const rightBtn = el("button", "rpRight", "done");
+    foot.append(leftBtn, spacer, hint, rightBtn);
+    pop.append(top, menu, was, question, threadBox, field, foot);
+    document.body.appendChild(pop);
+    let open = null;
+    let opened = null;
+    let dragged = false;
+    const noteById = (id) => pen2.items().find((n) => n.id === id) || null;
+    const openNoteId = () => open && open.kind === "comment" ? open.id : null;
+    const transportCan = (name) => {
+      const t = thread.transport();
+      return !!(t && typeof t[name] === "function");
+    };
+    function place(node) {
+      const r = tailRect(node);
+      const w = pop.offsetWidth, h = pop.offsetHeight;
+      let left = Math.min(r.left, innerWidth - w - 16);
+      left = Math.max(16, left);
+      let top2 = r.bottom + 8;
+      if (top2 + h > innerHeight - 16) top2 = Math.max(16, r.top - h - 8);
+      pop.style.left = left + "px";
+      pop.style.top = top2 + "px";
+    }
+    function atDock() {
+      const node = anchor && anchor();
+      const r = node ? node.getBoundingClientRect() : { right: innerWidth - 14, top: innerHeight - 14 };
+      pop.style.left = Math.max(16, r.right - pop.offsetWidth) + "px";
+      pop.style.top = Math.max(16, r.top - pop.offsetHeight - 8) + "px";
+    }
+    function show(node) {
+      pop.hidden = false;
+      if (node) afterScroll(node, () => place(node));
+      else atDock();
+    }
+    function relayout() {
+      if (pop.hidden || !open || dragged) return;
+      if (open.kind === "ask") {
+        const node2 = document.getElementById(open.key);
+        if (node2) place(node2);
+        return;
+      }
+      const note = noteById(open.id);
+      const sel = note && note.target && note.target.selector;
+      const node = sel ? document.querySelector(sel) : null;
+      if (node) place(node);
+    }
+    let drag = null;
+    top.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("button")) return;
+      const r = pop.getBoundingClientRect();
+      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      e.preventDefault();
+    });
+    function onDragMove(e) {
+      if (!drag) return;
+      const w = pop.offsetWidth, h = pop.offsetHeight;
+      pop.style.left = Math.max(8, Math.min(e.clientX - drag.dx, innerWidth - w - 8)) + "px";
+      pop.style.top = Math.max(8, Math.min(e.clientY - drag.dy, innerHeight - h - 8)) + "px";
+    }
+    function onDragEnd() {
+      if (!drag) return;
+      drag = null;
+      dragged = true;
+    }
+    window.addEventListener("pointermove", onDragMove);
+    window.addEventListener("pointerup", onDragEnd);
+    function flush(force) {
+      if (!open) return;
+      if (!force && field.value === opened) return;
+      opened = field.value;
+      if (open.kind === "ask") pen2.answer(open.key, field.value);
+      else if (open.kind === "comment" && open.threaded) {
+        pen2.updateNote(open.id, (n) => {
+          if (field.value) n.draft = field.value;
+          else delete n.draft;
+        });
+      } else if (open.kind === "comment") pen2.setNote(open.id, field.value);
+    }
+    field.addEventListener("input", () => flush());
+    function openAsk(k) {
+      leaveOpen();
+      const list = pen2.requests();
+      const r = list.find((x) => x.key === k);
+      if (!r) return hide();
+      open = { kind: "ask", key: k, answerAtOpen: r.answer || "" };
+      thread.reading(null);
+      pen2.openRequest(k);
+      closeMenu();
+      moreBtn.hidden = true;
+      eyebrow.textContent = `ask ${r.n} of ${list.length}`;
+      question.hidden = false;
+      question.textContent = r.ask;
+      was.hidden = !r.stale;
+      wasText.textContent = r.askedWas || "";
+      renderThread();
+      field.hidden = false;
+      field.placeholder = "your answer";
+      field.value = opened = r.answer || "";
+      leftBtn.hidden = false;
+      leftBtn.textContent = "\u2039 prev";
+      rightBtn.textContent = "next \u203A";
+      hint.textContent = "\u2318\u21B5 next";
+      hint.hidden = false;
+      dragged = false;
+      show(document.getElementById(k));
+      field.focus();
+      onChange();
+    }
+    function openComment(item, { fresh = false } = {}) {
+      leaveOpen();
+      item = noteById(item.id) || item;
+      if (item.unread) {
+        pen2.updateNote(item.id, (n) => {
+          delete n.unread;
+        });
+        pen2.layout();
+      }
+      const threaded = !!(item.thread && item.thread.length);
+      open = { kind: "comment", id: item.id, textAtOpen: item.text || "", threaded, fresh };
+      thread.reading(item.id);
+      pen2.openRequest(null);
+      closeMenu();
+      moreBtn.hidden = false;
+      resolveAct.textContent = item.resolved ? "Reopen" : "Resolve";
+      eyebrow.textContent = `comment ${item.id} \xB7 ${elementLabel(item.target, item.kind)}`;
+      question.hidden = true;
+      was.hidden = true;
+      renderThread();
+      field.hidden = false;
+      field.placeholder = threaded ? "reply to the agent\u2026" : "what's wrong here";
+      field.value = opened = (threaded ? item.draft : item.text) || "";
+      leftBtn.hidden = true;
+      rightBtn.textContent = threaded ? "send \u203A" : "done";
+      hint.hidden = false;
+      hint.textContent = threaded ? "\u2318\u21B5 send" : "\u2318\u21B5 done";
+      dragged = false;
+      const sel = item.target && item.target.selector;
+      show(sel ? document.querySelector(sel) : null);
+      scrollThreadToEnd();
+      field.focus();
+      onChange();
+    }
+    function hide() {
+      pop.hidden = true;
+      if (document.activeElement === field) field.blur();
+      thread.reading(null);
+      pen2.openRequest(null);
+      onChange();
+    }
+    function closeIf(id) {
+      if (!open || open.kind !== "comment" || open.id !== id) return;
+      open = null;
+      hide();
+    }
+    function reseed() {
+      if (!open || open.kind !== "ask" || field.value !== opened) return;
+      const r = pen2.requests().find((x) => x.key === open.key);
+      if (r) field.value = opened = open.answerAtOpen = r.answer || "";
+    }
+    function shouldAnnounce(at, note) {
+      if (note.thread && note.thread.length) return false;
+      return note.text !== at.textAtOpen;
+    }
+    function leaveOpen() {
+      const at = open;
+      flush();
+      open = null;
+      thread.reading(null);
+      if (!at || at.kind !== "comment") return;
+      const note = noteById(at.id);
+      if (!note) return;
+      const threaded = !!(note.thread && note.thread.length);
+      if (!threaded && !String(note.text || "").trim()) {
+        pen2.remove(at.id);
+        return;
+      }
+      if (prefs.hold()) return;
+      if (shouldAnnounce(at, note)) thread.announce(at.id);
+    }
+    function cancelOpen() {
+      const at = open;
+      open = null;
+      if (!at) return hide();
+      if (at.kind === "ask") {
+        pen2.answer(at.key, at.answerAtOpen);
+        return hide();
+      }
+      if (at.kind !== "comment") return hide();
+      const note = noteById(at.id);
+      if (!note) return hide();
+      const threaded = !!(note.thread && note.thread.length);
+      if (at.fresh && !threaded) {
+        pen2.remove(at.id);
+        hide();
+        if (String(note.text || "").trim()) toast(`comment ${at.id} discarded`, () => pen2.restore([note]));
+        return;
+      }
+      if (threaded) pen2.updateNote(at.id, (n) => {
+        delete n.draft;
+      });
+      else pen2.setNote(at.id, at.textAtOpen);
+      hide();
+    }
+    function leave() {
+      leaveOpen();
+      hide();
+    }
+    function cancel() {
+      cancelOpen();
+    }
+    function finish() {
+      if (!open) return;
+      if (open.kind === "ask") return step(1);
+      if (open.kind === "comment" && open.threaded) return sendFollowUp();
+      leave();
+    }
+    function sendFollowUp() {
+      if (!open || open.kind !== "comment" || !open.threaded) return;
+      const said = field.value;
+      if (!said.trim()) return;
+      field.value = opened = "";
+      if (!thread.send(open.id, said)) field.value = opened = said;
+      renderThread();
+      onChange();
+    }
+    function closeMenu() {
+      menu.hidden = true;
+      menu.textContent = "";
+      menu.append(resolveAct, copyAct, deleteAct);
+    }
+    moreBtn.addEventListener("click", () => {
+      if (!open || open.kind !== "comment") return;
+      if (!menu.hidden) return closeMenu();
+      closeMenu();
+      menu.hidden = false;
+    });
+    resolveAct.addEventListener("click", () => {
+      if (!open || open.kind !== "comment") return;
+      const id = open.id;
+      const note = noteById(id);
+      if (!note) return;
+      if (note.resolved) {
+        thread.resolve(id, false);
+        resolveAct.textContent = "Resolve";
+        closeMenu();
+        onChange();
+        return;
+      }
+      flush();
+      open = null;
+      thread.reading(null);
+      thread.resolve(id, true);
+      closeMenu();
+      hide();
+    });
+    copyAct.addEventListener("click", () => {
+      if (!open || open.kind !== "comment") return;
+      const item = pen2.review().items.find((i) => i.kind === "comment" && i.id === open.id);
+      if (!item) return;
+      copyText(JSON.stringify(item, null, 2), () => {
+        copyAct.textContent = "copied \u2713";
+        setTimeout(() => {
+          copyAct.textContent = "Copy this comment";
+        }, 1500);
+      });
+    });
+    deleteAct.addEventListener("click", () => {
+      if (!open || open.kind !== "comment") return;
+      const id = open.id;
+      const row = el("div", "rpConfirm");
+      row.append(document.createTextNode(`Delete comment ${id}?`), el("span", "sp"));
+      const no = el("button", null, "cancel");
+      no.addEventListener("click", closeMenu);
+      const yes = el("button", "go", "delete");
+      yes.addEventListener("click", () => discard(id));
+      row.append(no, yes);
+      menu.textContent = "";
+      menu.appendChild(row);
+    });
+    function discard(id) {
+      const note = noteById(id);
+      const running = (note && note.thread || []).find((t) => CANCELLABLE.has(t.state));
+      if (running && transportCan("cancel")) thread.transport().cancel(running.request);
+      open = null;
+      thread.reading(null);
+      pen2.remove(id);
+      closeMenu();
+      hide();
+      if (note) toast(`comment ${id} deleted`, () => pen2.restore([note]));
+    }
+    stillBtn.addEventListener("click", () => {
+      if (!open || open.kind !== "ask" || !field.value.trim()) return;
+      flush(true);
+      openAsk(open.key);
+    });
+    closeBtn.addEventListener("click", leave);
+    rightBtn.addEventListener("click", finish);
+    leftBtn.addEventListener("click", () => step(-1));
+    function whoRow(name, iso) {
+      const row = el("div", "rprWho");
+      row.append(el("span", null, name), el("span", "rprWhen", clock(iso)));
+      return row;
+    }
+    function paragraphs(into, text, cls) {
+      for (const block of String(text).split(/\n{2,}/)) {
+        const said = block.trim();
+        if (said) into.appendChild(el("p", cls, said));
+      }
+    }
+    function trailFor(turn, box) {
+      const n = turn.progress.length + (turn.progressDropped || 0);
+      const trail = box || el("details", "rprTrail");
+      trail.textContent = "";
+      trail.appendChild(el("summary", null, `${n} progress line${n === 1 ? "" : "s"}`));
+      if (turn.progressDropped) trail.appendChild(el("p", null, `\u2026${turn.progressDropped} earlier`));
+      for (const line of turn.progress) trail.appendChild(el("p", null, line));
+      return trail;
+    }
+    function stateRow(turn) {
+      const label = turnLine(turn);
+      const cancellable = CANCELLABLE.has(turn.state) && transportCan("cancel");
+      const parked = turn.state === "parked";
+      if (!label && !cancellable && !parked) return null;
+      const row = el("div", "rprTurnState");
+      row.append(el("span", ("rprDot " + dotClass(turn.state)).trim()), el("span", null, label));
+      if (cancellable) {
+        const btn = el("button", null, "cancel");
+        btn.addEventListener("click", () => thread.transport().cancel(turn.request));
+        row.append(btn);
+      } else if (parked) {
+        const btn = el("button", null, "send");
+        btn.addEventListener("click", () => {
+          thread.resume(openNoteId(), turn.id);
+          renderThread();
+        });
+        row.append(btn);
+      }
+      return row;
+    }
+    let threadFor = null;
+    const turnBlocks = /* @__PURE__ */ new Map();
+    const turnTrails = /* @__PURE__ */ new Map();
+    const turnDrawn = /* @__PURE__ */ new Map();
+    const turnSig = (turn) => [
+      turn.state,
+      turn.repliedAt || "",
+      turn.reply || "",
+      turn.note || "",
+      (turn.progress || []).length,
+      turn.progressDropped || 0
+    ].join("\0");
+    function forgetThread() {
+      threadBox.textContent = "";
+      turnBlocks.clear();
+      turnTrails.clear();
+      turnDrawn.clear();
+    }
+    function fillTurn(block, turn, them) {
+      const trail = turn.progress && turn.progress.length ? trailFor(turn, turnTrails.get(turn.id)) : null;
+      if (trail) turnTrails.set(turn.id, trail);
+      block.textContent = "";
+      block.append(whoRow("you", turn.at));
+      paragraphs(block, turn.ask, "rprSaid");
+      if (turn.reply) {
+        block.append(whoRow(them, turn.repliedAt));
+        paragraphs(block, turn.reply, "rprReply");
+      }
+      if (turn.note) block.appendChild(el("p", "rprMangled", turn.note));
+      if (trail) block.appendChild(trail);
+      const state = stateRow(turn);
+      if (state) block.appendChild(state);
+      if (RUNNING2.has(turn.state) && turn.progress && turn.progress.length) {
+        block.appendChild(el("p", "rprNow", turn.progress[turn.progress.length - 1]));
+      }
+    }
+    function renderThread() {
+      const id = openNoteId();
+      if (id !== threadFor) {
+        forgetThread();
+        threadFor = id;
+      }
+      if (id == null) return threadBox.hidden = true;
+      const turns = thread.of(id);
+      threadBox.hidden = !turns.length;
+      if (!turns.length) return void forgetThread();
+      const stick = threadBox.scrollHeight - threadBox.scrollTop - threadBox.clientHeight < 24;
+      const t = thread.transport();
+      const them = t && t.label || "agent";
+      const live = /* @__PURE__ */ new Set();
+      let grew = false;
+      for (const turn of turns) {
+        live.add(turn.id);
+        let block = turnBlocks.get(turn.id);
+        if (!block) {
+          block = el("div", "rprTurn");
+          turnBlocks.set(turn.id, block);
+          grew = true;
+        }
+        const drawn = turnSig(turn) + "\0" + them;
+        if (turnDrawn.get(turn.id) !== drawn) {
+          fillTurn(block, turn, them);
+          turnDrawn.set(turn.id, drawn);
+        }
+        if (block.parentNode !== threadBox) threadBox.appendChild(block);
+      }
+      for (const [turnId, block] of turnBlocks) {
+        if (live.has(turnId)) continue;
+        block.remove();
+        turnBlocks.delete(turnId);
+        turnTrails.delete(turnId);
+        turnDrawn.delete(turnId);
+      }
+      if (stick || grew) scrollThreadToEnd();
+    }
+    function scrollThreadToEnd() {
+      threadBox.scrollTop = threadBox.scrollHeight;
+    }
+    function onTurn(noteId) {
+      if (openNoteId() === noteId) renderThread();
+    }
+    const onPageHide = () => flush();
+    window.addEventListener("pagehide", onPageHide);
+    return {
+      node: pop,
+      openAsk,
+      openComment,
+      openAt: () => open,
+      isOpen: () => !pop.hidden,
+      flush,
+      leave,
+      cancel,
+      finish,
+      hide,
+      closeIf,
+      reseed,
+      relayout,
+      onTurn,
+      theme: (v) => {
+        pop.dataset.rpTheme = v;
+      },
+      destroy() {
+        window.removeEventListener("pointermove", onDragMove);
+        window.removeEventListener("pointerup", onDragEnd);
+        window.removeEventListener("pagehide", onPageHide);
+        pop.remove();
+      }
+    };
+  }
+
+  // src/dock.js
+  var CSS2 = `
+  .rpDock, .rprPop, .rprTip, .rpToast {
+    --rp-paper: #FDFDFC; --rp-sunk: #EFEDE9; --rp-ink: #17110C; --rp-ink2: #463F38; --rp-faint: #8A857E;
+    --rp-line: #DCD8D2; --rp-line2: #C6C1B9; --rp-flag: #D2373D; --rp-flag-soft: rgba(210,55,61,.10);
+    --rp-flag-edge: rgba(210,55,61,.34); --rp-ok: #2F7D48;
+    --rp-shadow: 0 1px 2px rgba(23,17,12,.06), 0 12px 34px -16px rgba(23,17,12,.30);
+    --rp-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  [data-rp-theme="dark"].rpDock, [data-rp-theme="dark"].rprPop, [data-rp-theme="dark"].rprTip,
+  [data-rp-theme="dark"].rpToast {
+    --rp-paper: #181D25; --rp-sunk: #1F252F; --rp-ink: #E6EAF1; --rp-ink2: #C3CAD5; --rp-faint: #77808E;
+    --rp-line: #2A313C; --rp-line2: #3A4350; --rp-flag: #F2646A; --rp-flag-soft: rgba(242,100,106,.14);
+    --rp-flag-edge: rgba(242,100,106,.40); --rp-ok: #63C083;
+    --rp-shadow: 0 1px 2px rgba(0,0,0,.4), 0 14px 34px -16px rgba(0,0,0,.7);
+  }
+
+  /* Scoped, never global: the mockup's bare [hidden] rule would reach into the
+     page being reviewed. Buttons and textareas set their own display, which
+     outranks the UA rule and would leave a "hidden" control on screen. */
+  .rpDock [hidden], .rprPop [hidden], .rpDock[hidden], .rprPop[hidden] { display: none !important; }
+
+  /* the dock */
+  .rpDock { position: fixed; right: 14px; z-index: 99995; display: flex; flex-direction: column;
+    align-items: stretch; gap: 6px; width: 322px;
+    font: 12px/1.45 var(--rp-mono); letter-spacing: .03em; color: var(--rp-ink); }
+  /* one class, so a host rule of equal specificity later in the cascade wins */
+  .rprBar { bottom: 14px; }
+  .rpDock .rpBar { display: flex; align-items: center; gap: 4px; align-self: flex-end;
+    background: var(--rp-paper); border: 1px solid var(--rp-line); border-radius: 9px; padding: 4px;
+    box-shadow: var(--rp-shadow); }
+  .rpDock[data-mode] .rpBar { border-color: var(--rp-flag); box-shadow: var(--rp-shadow), 0 0 0 3px var(--rp-flag-soft); }
+  .rpDock.failed .rpBar { border-color: var(--rp-flag); }
+  .rpDock .rpIcon { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 6px; background: none; color: var(--rp-ink2); cursor: pointer; padding: 0; }
+  .rpDock .rpIcon:hover { background: var(--rp-sunk); color: var(--rp-ink); }
+  .rpDock .rpIcon.on { background: var(--rp-flag); color: var(--rp-paper); }
+  .rpDock .rpIcon svg { display: block; }
+  .rpDock .rpDiv { width: 1px; height: 19px; background: var(--rp-line); margin: 0 3px; }
+  .rpDock .rpList, .rpDock .rpMore, .rpDock .rpCopy, .rpDock .rpSend, .rpDock .rprStep {
+    font: inherit; letter-spacing: inherit; border: 0; background: none;
+    color: var(--rp-faint); border-radius: 6px; padding: 6px 8px; cursor: pointer; }
+  .rpDock .rpList:hover, .rpDock .rpMore:hover, .rpDock .rpCopy:hover,
+  .rpDock .rpSend:hover, .rpDock .rprStep:hover { background: var(--rp-sunk); color: var(--rp-ink); }
+  .rpDock .rpList { color: var(--rp-ink); font-variant-numeric: tabular-nums; display: flex; gap: 4px; align-items: center; }
+  .rpDock .rpCar { color: var(--rp-faint); font-size: 9px; }
+  .rpDock .rpList.on, .rpDock .rpMore.on { background: var(--rp-sunk); color: var(--rp-ink); }
+  .rpDock .rpStepper { display: flex; align-items: center; }
+  .rpDock .rprStep { padding: 6px 5px; }
+  .rpDock .rprCount { color: var(--rp-ink); padding: 0 2px; font-variant-numeric: tabular-nums; }
+  .rpDock .rpWire { margin: 0 5px; cursor: pointer; }
+  .rpDock .rpDot, .rprPop .rprDot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    flex: none; background: var(--rp-faint); }
+  .rpDock .rpDot.working, .rprPop .rprDot.working { background: var(--rp-flag); animation: rpPulse 1.1s ease-in-out infinite; }
+  .rpDock .rpDot.done, .rprPop .rprDot.done, .rpDock .rpDot.ok { background: var(--rp-ok); }
+  .rpDock .rpDot.error, .rprPop .rprDot.error { background: var(--rp-flag); }
+  .rpDock .rpDot.unsent { background: none; border: 1.5px solid var(--rp-faint); }
+  @keyframes rpPulse { 0%, 100% { opacity: 1 } 50% { opacity: .4 } }
+
+  /* the export pill: one control when there is no agent, two when there is */
+  .rpDock .rpExport { display: inline-flex; border: 1px solid var(--rp-line2); border-radius: 6px;
+    overflow: hidden; margin-left: 2px; }
+  .rpDock .rpExport button { border-radius: 0; padding: 5px 9px; color: var(--rp-ink); }
+  .rpDock .rpExport .rpSend + .rpCopy { border-left: 1px solid var(--rp-line); }
+  .rpDock .rpExport button[disabled] { color: var(--rp-faint); cursor: default; }
+  .rpDock .rpExport button[disabled]:hover { background: none; color: var(--rp-faint); }
+  .rpDock .rpExport.solid { border-color: var(--rp-ink); }
+  .rpDock .rpExport.solid .rpCopy { background: var(--rp-ink); color: var(--rp-paper); }
+  .rpDock .rpExport.solid .rpCopy:hover { background: var(--rp-ink); color: var(--rp-paper); }
+
+  /* the strip: the minimized comment area, one line */
+  .rpDock .rpStrip { display: flex; align-items: center; gap: 8px; background: var(--rp-paper);
+    border: 1px solid var(--rp-line); border-radius: 8px; padding: 7px 9px; box-shadow: var(--rp-shadow);
+    cursor: pointer; }
+  .rpDock .rpStrip:hover { border-color: var(--rp-line2); }
+  .rpDock .rpStrip .rpN { color: var(--rp-flag); font-weight: 700; flex: none; font-variant-numeric: tabular-nums; }
+  .rpDock .rpStrip .rpSaid { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: var(--rp-ink); }
+  .rpDock .rpStrip .rpSaid.dim { color: var(--rp-faint); }
+  .rpDock .rpStrip button { font: inherit; letter-spacing: inherit; border: 0; background: none;
+    color: var(--rp-faint); border-radius: 5px; padding: 2px 6px; cursor: pointer; flex: none; }
+  .rpDock .rpStrip button:hover { background: var(--rp-sunk); color: var(--rp-ink); }
+
+  /* the mode hint */
+  .rpDock .rpHint { align-self: flex-end; display: flex; align-items: center; gap: 8px;
+    background: var(--rp-ink); color: var(--rp-paper); border-radius: 7px; padding: 6px 10px;
+    font-size: 11px; letter-spacing: .05em; box-shadow: var(--rp-shadow); }
+  .rpDock .rpHint kbd { font: inherit; border: 1px solid rgba(255,255,255,.35); border-radius: 3px;
+    padding: 0 4px; opacity: .85; }
+
+  /* the panel */
+  .rpDock .rpPanel { background: var(--rp-paper); border: 1px solid var(--rp-line); border-radius: 9px;
+    box-shadow: var(--rp-shadow); overflow: hidden; max-height: min(64vh, 440px);
+    display: flex; flex-direction: column; }
+  .rpDock .rpPhead { display: flex; align-items: center; gap: 8px; padding: 9px 11px;
+    border-bottom: 1px solid var(--rp-line); font-size: 10px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--rp-faint); flex: none; }
+  .rpDock .rpPhead .sp { flex: 1; }
+  .rpDock .rpPhead button { font: inherit; letter-spacing: inherit; text-transform: inherit; border: 0;
+    background: none; color: var(--rp-faint); cursor: pointer; border-radius: 4px; padding: 2px 5px; }
+  .rpDock .rpPhead button:hover { background: var(--rp-sunk); color: var(--rp-ink); }
+  .rpDock .rpPbody { overflow-y: auto; padding: 5px; }
+  .rpDock .rpItem { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left;
+    border: 0; background: none; color: var(--rp-ink); font: inherit; letter-spacing: inherit;
+    border-radius: 6px; padding: 7px 8px; cursor: pointer; }
+  .rpDock .rpItem:hover { background: var(--rp-sunk); }
+  .rpDock .rpItem .n { color: var(--rp-flag); font-weight: 700; flex: none;
+    font-variant-numeric: tabular-nums; min-width: 18px; }
+  .rpDock .rpItem .said { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rpDock .rpItem .said.dim { color: var(--rp-faint); }
+  .rpDock .rpItem .mini { flex: none; color: var(--rp-faint); font-size: 10.5px; }
+  .rpDock .rpRow { display: flex; align-items: center; gap: 6px; padding: 2px 3px; }
+  .rpDock .rpRow .rpItem { flex: 1; }
+  .rpDock .rpRow .sub { font: inherit; letter-spacing: inherit; border: 0; background: none;
+    color: var(--rp-faint); border-radius: 5px; padding: 5px 7px; cursor: pointer; flex: none; }
+  .rpDock .rpRow .sub:hover { background: var(--rp-sunk); color: var(--rp-ink); }
+  .rpDock .rpRow .sub.danger:hover { background: var(--rp-flag-soft); color: var(--rp-flag); }
+  .rpDock .rpEmpty { padding: 16px 12px; color: var(--rp-faint); text-align: center; font-size: 11.5px; }
+  .rpDock .rpNote { padding: 4px 11px 8px; color: var(--rp-faint); font-size: 11px; line-height: 1.5; }
+
+  /* the menu */
+  .rpDock .rpMenu { padding: 5px; }
+  .rpDock .rpMenu button.mi { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+    border: 0; background: none; color: var(--rp-ink); font: inherit; letter-spacing: inherit;
+    border-radius: 6px; padding: 8px 9px; cursor: pointer; }
+  .rpDock .rpMenu button.mi:hover { background: var(--rp-sunk); }
+  .rpDock .rpMenu button.mi .k { margin-left: auto; color: var(--rp-faint); font-size: 10.5px; }
+  .rpDock .rpMenu button.mi.danger:hover { background: var(--rp-flag-soft); color: var(--rp-flag); }
+  .rpDock .rpMenu button.mi[disabled] { color: var(--rp-faint); cursor: default; }
+  .rpDock .rpMenu button.mi[disabled]:hover { background: none; }
+  .rpDock .rpMenu .sep { height: 1px; background: var(--rp-line); margin: 5px 3px; }
+  .rpDock .rpMenu .grp { padding: 7px 9px 4px; font-size: 9.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--rp-faint); }
+  .rpDock .rpMenu .status { display: flex; align-items: center; gap: 9px; padding: 8px 9px;
+    color: var(--rp-faint); }
+  .rpDock .rpMenu label.mi { display: flex; align-items: center; gap: 9px; padding: 6px 9px;
+    cursor: pointer; border-radius: 6px; }
+  .rpDock .rpMenu label.mi:hover { background: var(--rp-sunk); }
+  .rpDock .rpMenu label.mi input { accent-color: var(--rp-flag); margin: 0; }
+  .rpDock .rpConfirm { display: flex; align-items: center; gap: 6px; padding: 8px 9px;
+    background: var(--rp-flag-soft); border-radius: 6px; color: var(--rp-ink); }
+  .rpDock .rpConfirm .sp { flex: 1; }
+  .rpDock .rpConfirm button { font: inherit; letter-spacing: inherit; border: 0; border-radius: 5px;
+    padding: 4px 8px; cursor: pointer; background: none; color: var(--rp-faint); }
+  .rpDock .rpConfirm button:hover { background: var(--rp-sunk); color: var(--rp-ink); }
+  .rpDock .rpConfirm button.go { background: var(--rp-flag); color: var(--rp-paper); }
+  .rpDock .rpConfirm button.go:hover { background: var(--rp-flag); opacity: .86; color: var(--rp-paper); }
+  .rpDock .rpKeys { padding: 4px 9px 9px; color: var(--rp-faint); font-size: 11px; line-height: 1.9; }
+  .rpDock .rpKeys div { display: flex; gap: 9px; align-items: baseline; }
+  .rpDock .rpKeys kbd { font: inherit; border: 1px solid var(--rp-line2); border-radius: 3px;
+    padding: 0 4px; color: var(--rp-ink); flex: none; min-width: 74px; text-align: center; }
+  .rpDock .rpWarn { padding: 9px 11px; background: var(--rp-flag-soft); color: var(--rp-flag);
+    font-size: 11px; line-height: 1.5; border-bottom: 1px solid var(--rp-line); }
+
+  /* the key letters, for the first eight seconds of every load */
+  .rpDock.rpTeach .rpIcon { flex-direction: column; height: auto; padding: 4px 0 3px; }
+  .rpDock.rpTeach .rpIcon::after { content: attr(data-key); font: 600 9px/1 var(--rp-mono);
+    color: var(--rp-faint); margin-top: 2px; }
+
+  /* the on-element popover */
+  .rprPop { position: fixed; z-index: 99996; box-sizing: border-box; width: 352px;
+    max-width: calc(100vw - 28px); background: var(--rp-paper); border: 1px solid var(--rp-line);
+    border-radius: 9px; padding: 11px 12px; box-shadow: var(--rp-shadow);
+    font: 12.5px/1.5 var(--rp-mono); letter-spacing: .02em; color: var(--rp-ink); }
+  .rprPop .rpPopTop { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; cursor: move; }
+  .rprPop .rprEyebrow { flex: 1; font-size: 10px; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--rp-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rprPop .rprX { font: inherit; color: var(--rp-faint); background: none; border: 0; cursor: pointer;
+    padding: 1px 5px; border-radius: 5px; line-height: 1.2; }
+  .rprPop .rprX:hover { background: var(--rp-sunk); color: var(--rp-ink); }
+  .rprPop .rpPopMenu { border: 1px solid var(--rp-line); border-radius: 7px; padding: 4px;
+    margin-bottom: 9px; background: var(--rp-sunk); }
+  .rprPop .rpPopMenu button { display: flex; width: 100%; text-align: left; border: 0; background: none;
+    font: inherit; letter-spacing: inherit; color: var(--rp-ink); border-radius: 5px; padding: 6px 8px;
+    cursor: pointer; }
+  .rprPop .rpPopMenu button:hover { background: var(--rp-paper); }
+  .rprPop .rpPopMenu button.danger:hover { color: var(--rp-flag); }
+  .rprPop .rpConfirm { display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+    background: var(--rp-flag-soft); border-radius: 5px; color: var(--rp-ink); }
+  .rprPop .rpConfirm .sp { flex: 1; }
+  .rprPop .rpConfirm button { width: auto; font: inherit; border: 0; border-radius: 5px; padding: 3px 8px;
+    cursor: pointer; background: none; color: var(--rp-faint); }
+  .rprPop .rpConfirm button.go { background: var(--rp-flag); color: var(--rp-paper); }
+  .rprPop .rprQ { margin: 0 0 9px; }
+  .rprPop .rprWas { margin: 0 0 7px; padding: 6px 8px; border-left: 2px solid #E8A33D;
+    color: var(--rp-faint); font-size: 11.5px; }
+  .rprPop .rprWas b { display: block; font-weight: 400; letter-spacing: .1em; text-transform: uppercase;
+    font-size: 9.5px; margin-bottom: 3px; }
+  .rprPop .rprStill { display: block; margin-top: 5px; font: inherit; color: var(--rp-ink);
+    background: none; border: 0; border-bottom: 1px solid #E8A33D; border-radius: 0; padding: 0; cursor: pointer; }
+  .rprPop textarea { display: block; width: 100%; box-sizing: border-box; min-height: 74px; resize: vertical;
+    font: inherit; color: inherit; background: var(--rp-sunk); border: 1px solid var(--rp-line);
+    border-radius: 6px; padding: 8px 9px; }
+  .rprPop textarea:focus { outline: 0; border-color: var(--rp-line2); box-shadow: 0 0 0 3px var(--rp-flag-soft); }
+  .rprPop .rpPopFoot { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .rprPop .rpPopFoot .rprSpacer { flex: 1; }
+  .rprPop .rpPopFoot button { font: inherit; letter-spacing: inherit; color: var(--rp-ink);
+    background: var(--rp-sunk); border: 1px solid var(--rp-line); border-radius: 6px; padding: 4px 10px;
+    cursor: pointer; }
+  .rprPop .rpPopFoot button:hover { border-color: var(--rp-line2); }
+  .rprPop .rprHint { font-size: 10px; letter-spacing: .11em; text-transform: uppercase; color: var(--rp-faint); }
+
+  /* The thread. Your words are muted and the reply is full ink, because the
+     reply is what you opened this to read. */
+  .rprPop .rprThread { max-height: 38vh; overflow-y: auto; margin: 0 0 9px; }
+  .rprPop .rprTurn + .rprTurn { border-top: 1px solid var(--rp-line); margin-top: 10px; padding-top: 10px; }
+  .rprPop .rprWho { display: flex; align-items: baseline; gap: 8px; margin: 0 0 3px; font-size: 9.5px;
+    letter-spacing: .13em; text-transform: uppercase; color: var(--rp-faint); }
+  .rprPop .rprWhen { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .rprPop .rprSaid, .rprPop .rprReply, .rprPop .rprMangled { margin: 0 0 6px; white-space: pre-wrap; }
+  .rprPop .rprSaid { color: var(--rp-faint); }
+  .rprPop .rprReply { color: var(--rp-ink); }
+  .rprPop .rprMangled { color: var(--rp-flag); }
+  .rprPop .rprTrail { margin: 0 0 6px; font-size: 11.5px; color: var(--rp-faint); }
+  .rprPop .rprTrail summary { cursor: pointer; }
+  .rprPop .rprTrail p { margin: 3px 0 0 12px; white-space: pre-wrap; }
+  .rprPop .rprTurnState { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--rp-faint); }
+  .rprPop .rprTurnState button { font: inherit; color: var(--rp-faint); background: none; border: 0;
+    border-radius: 5px; padding: 2px 6px; margin-left: auto; cursor: pointer; }
+  .rprPop .rprTurnState button:hover { background: var(--rp-sunk); color: var(--rp-ink); }
+  .rprPop .rprNow { margin: 2px 0 0 14px; font-size: 11.5px; color: var(--rp-faint); }
+
+  .rprTip { position: fixed; z-index: 99997; max-width: 320px; pointer-events: none;
+    font: 11.5px/1.45 var(--rp-mono); color: var(--rp-ink); background: var(--rp-paper);
+    border: 1px solid var(--rp-line); border-radius: 7px; padding: 6px 8px; box-shadow: var(--rp-shadow); }
+
+  /* the undo strip after something destructive */
+  .rpToast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 99997;
+    display: flex; align-items: center; gap: 10px; background: var(--rp-ink); color: var(--rp-paper);
+    border-radius: 8px; padding: 8px 12px; font: 12px/1 var(--rp-mono); letter-spacing: .04em;
+    box-shadow: var(--rp-shadow); }
+  .rpToast button { font: inherit; letter-spacing: inherit; border: 0; background: none;
+    color: var(--rp-paper); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 0; }
+
+  /* Pointing is read off redpen's own dock, never off a class on the authored
+     <body>: body's attributes changing makes the whole body a dirty root, so one
+     click on comment mode would protect the entire page from the agent's own edit. */
+  body:has(.rprBar[data-pointing]) main { outline: 1px solid var(--rp-flag, #D2373D); outline-offset: 6px; }
+`;
+  var BUBBLE = '<svg width="17" height="17" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.9 2.6h8.2A1.75 1.75 0 0 1 13.85 4.35v5A1.75 1.75 0 0 1 12.1 11.1H7.35l-2.9 2.3a.32.32 0 0 1-.52-.25V11.1h-.03A1.75 1.75 0 0 1 2.15 9.35v-5A1.75 1.75 0 0 1 3.9 2.6Z" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/></svg>';
+  var SQUIGGLE = '<svg width="17" height="17" viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 2.2 13.6 4.6 7.0 11.2 3.8 11.9 4.5 8.8 11.2 2.2Z" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round" stroke-linecap="round"/><path d="M2.3 13.9c1.05-.95 2.1-.95 3.15 0s2.1.95 3.15 0" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg>';
+  var SHORTCUTS = [
+    ["C", "comment mode on / off"],
+    ["D", "draw mode on / off"],
+    ["Esc", "back out one step"],
+    ["\u2318\u21B5", "done, or send a follow-up"],
+    ["\u2318Z", "undo the last stroke, in draw mode"],
+    ["N", "next unanswered question, when the page asks any"],
+    ["?", "this card"],
+    ["shift-click", "place a comment and stay in comment mode"]
+  ];
+  var DARK = "(prefers-color-scheme: dark)";
+  var TYPING = "input, textarea, select, [contenteditable]";
+  var INTERACTIVE = 'button, a, input, textarea, select, label, summary, [contenteditable], [role="button"]';
+  var el2 = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  var isTyping = (node) => !!node && node.nodeType === 1 && (node.matches(TYPING) || node.isContentEditable) || document.designMode === "on";
+  var swatch = null;
+  function rgbBytes(css) {
+    const m = /^rgba?\(([^)]+)\)$/.exec(css || "");
+    if (m) {
+      const [r2, g2, b2, a2 = 1] = m[1].split(/[\s,\/]+/).filter(Boolean).map(parseFloat);
+      return a2 === 0 ? null : [r2, g2, b2];
+    }
+    if (!swatch) {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      swatch = canvas.getContext("2d", { willReadFrequently: true });
+    }
+    if (!swatch) return null;
+    swatch.clearRect(0, 0, 1, 1);
+    swatch.fillStyle = "rgba(0,0,0,0)";
+    swatch.fillStyle = css;
+    swatch.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = swatch.getImageData(0, 0, 1, 1).data;
+    return a === 0 ? null : [r, g, b];
+  }
+  function luminance(css) {
+    const rgb = rgbBytes(css);
+    if (!rgb) return null;
+    const lin = (c) => {
+      c /= 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+  }
+  function isDark() {
+    for (const node of [document.body, document.documentElement]) {
+      if (!node) continue;
+      const l = luminance(getComputedStyle(node).backgroundColor);
+      if (l !== null) return l < 0.4;
+    }
+    return matchMedia(DARK).matches;
+  }
+  function markerTitle(note) {
+    const said = (note.text || "").trim();
+    if (!said) return "an empty comment";
+    return said.length > 72 ? said.slice(0, 71) + "\u2026" : said;
+  }
+  function injectStyles() {
+    if (document.getElementById("rpStyle")) return;
+    const style = mark(el2("style"));
+    style.id = "rpStyle";
+    style.textContent = CSS2;
+    document.head.prepend(style);
+  }
+  function createDock({ pen: pen2, thread, popover, prefs, tools: tools2, attr, clickThrough, keys, mountNode, step }) {
+    injectStyles();
+    let view = null;
+    let current = null;
+    let confirmAt = null;
+    let live = true;
+    let toastNode = null, toastTimer = null;
+    let clickThroughRule = null;
+    const root = chrome(el2("div", "rpDock rprBar"));
+    root.dataset.rpTheme = "light";
+    const panel = el2("div", "rpPanel");
+    panel.hidden = true;
+    const strip = el2("div", "rpStrip");
+    strip.hidden = true;
+    const stripDot = el2("span", "rpDot rprDot");
+    const stripN = el2("span", "rpN");
+    const stripSaid = el2("span", "rpSaid");
+    const stripAct = el2("button", "rpStripAct");
+    stripAct.hidden = true;
+    strip.append(stripDot, stripN, stripSaid, stripAct);
+    const hint = el2("div", "rpHint");
+    hint.hidden = true;
+    const bar = el2("div", "rpBar");
+    let commentBtn = null, drawBtn = null;
+    if (tools2.has("comment")) {
+      commentBtn = el2("button", "rpIcon rpComment");
+      commentBtn.dataset.key = "C";
+      commentBtn.title = "Comment (C)";
+      commentBtn.setAttribute("aria-label", "Comment");
+      commentBtn.innerHTML = BUBBLE;
+      bar.appendChild(commentBtn);
+    }
+    if (tools2.has("draw")) {
+      drawBtn = el2("button", "rpIcon rpDraw");
+      drawBtn.dataset.key = "D";
+      drawBtn.title = "Draw (D)";
+      drawBtn.setAttribute("aria-label", "Draw");
+      drawBtn.innerHTML = SQUIGGLE;
+      bar.appendChild(drawBtn);
+    }
+    const div = el2("span", "rpDiv");
+    const stepper = el2("span", "rpStepper");
+    stepper.hidden = true;
+    const prevBtn = el2("button", "rpPrev rprStep", "\u2039");
+    const countText = el2("span", "rpCount rprCount", "0/0");
+    const nextBtn = el2("button", "rpNext rprStep", "\u203A");
+    stepper.append(prevBtn, countText, nextBtn);
+    const listBtn = el2("button", "rpList");
+    const listN = el2("span", "rpListN", "0");
+    const listCar = el2("span", "rpCar", "\u25B4");
+    listBtn.append(listN, listCar);
+    const moreBtn = el2("button", "rpMore", "\u22EF");
+    moreBtn.title = "More (\u22EF)";
+    const wireDot = el2("span", "rpWire rpDot rprDot");
+    wireDot.hidden = true;
+    wireDot.title = "the agent";
+    const exportBox = el2("span", "rpExport");
+    const sendBtn = el2("button", "rpSend", "Send");
+    sendBtn.hidden = true;
+    const copyBtn = el2("button", "rpCopy", "Copy JSON");
+    exportBox.append(sendBtn, copyBtn);
+    bar.append(div, stepper, listBtn, moreBtn, wireDot, exportBox);
+    root.append(panel, strip, hint, bar);
+    document.body.appendChild(root);
+    const tip = chrome(el2("div", "rprTip"));
+    tip.hidden = true;
+    tip.dataset.rpTheme = "light";
+    document.body.appendChild(tip);
+    function applyTheme() {
+      const v = isDark() ? "dark" : "light";
+      root.dataset.rpTheme = v;
+      tip.dataset.rpTheme = v;
+      if (toastNode) toastNode.dataset.rpTheme = v;
+      popover.theme(v);
+    }
+    const dark = matchMedia(DARK);
+    const themeWatch = new MutationObserver(applyTheme);
+    const watchTheme = (node) => {
+      if (node) themeWatch.observe(node, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
+    };
+    watchTheme(document.documentElement);
+    watchTheme(document.body);
+    dark.addEventListener("change", applyTheme);
+    window.addEventListener("load", applyTheme);
+    applyTheme();
+    function hideToast() {
+      clearTimeout(toastTimer);
+      toastNode?.remove();
+      toastNode = null;
+    }
+    function toast(text, undo) {
+      hideToast();
+      toastNode = chrome(el2("div", "rpToast"));
+      toastNode.dataset.rpTheme = root.dataset.rpTheme;
+      toastNode.appendChild(document.createTextNode(text));
+      const back = el2("button", null, "undo");
+      back.addEventListener("click", () => {
+        undo?.();
+        hideToast();
+        render();
+      });
+      toastNode.appendChild(back);
+      document.body.appendChild(toastNode);
+      toastTimer = setTimeout(hideToast, 8e3);
+    }
+    const flashing = /* @__PURE__ */ new Map();
+    function flash(node, text) {
+      clearTimeout(flashing.get(node)?.timer);
+      flashing.set(node, { text, timer: setTimeout(() => {
+        flashing.delete(node);
+        render();
+      }, 1500) });
+      render();
+    }
+    const labelOf = (node, resting) => flashing.has(node) ? flashing.get(node).text : resting;
+    function shape(out, which) {
+      const copy2 = { ...out };
+      if (which === "comments") {
+        delete copy2.strokes;
+        delete copy2.viewBox;
+      }
+      if (which === "drawing") {
+        return {
+          page: copy2.page,
+          ...copy2.coords ? { coords: copy2.coords } : {},
+          ...copy2.viewBox ? { viewBox: copy2.viewBox } : {},
+          ...copy2.targets ? { targets: copy2.targets } : {},
+          strokes: copy2.strokes || []
+        };
+      }
+      return copy2;
+    }
+    const exportObject = (which = "all") => shape(pen2.review(), which);
+    function copy(which = "all") {
+      popover.flush();
+      const full = pen2.review();
+      const text = JSON.stringify(shape(full, which), null, 2);
+      const said = which === "drawing" ? `copied \u2713 ${(full.strokes || []).length} strokes` : `copied \u2713 ${full.answered} answers \xB7 ${full.items.filter((i) => i.kind === "comment").length} comments`;
+      copyText(text, () => flash(copyBtn, said), () => flash(copyBtn, "copy failed"));
+      return text;
+    }
+    if (clickThrough) {
+      clickThroughRule = mark(el2("style"));
+      clickThroughRule.id = "rprClickThrough";
+      clickThroughRule.textContent = `body:has(.rprBar[data-pointing]) ${clickThrough} { pointer-events: auto !important; }`;
+      document.head.appendChild(clickThroughRule);
+    }
+    function assertClickThrough() {
+      if (!clickThrough) return;
+      for (const node of document.querySelectorAll(clickThrough)) {
+        const r = node.getBoundingClientRect();
+        if (!r.width || r.top > innerHeight || r.bottom < 0) continue;
+        const x = r.left + r.width / 2, y = Math.max(1, Math.min(innerHeight - 1, r.top + r.height / 2));
+        if (!document.elementsFromPoint(x, y).includes(node)) {
+          console.warn("[redpen] " + clickThrough + " is still not hit-testable: a drag on it will file an area note, not a region of the picture", node);
+        }
+        return;
+      }
+    }
+    function setMode(v) {
+      if (v) popover.leave();
+      pen2.setMode(v);
+      if (v === "note") assertClickThrough();
+      render();
+    }
+    const toggleMode = (m) => setMode(pen2.mode() === m ? null : m);
+    function setView(v) {
+      view = v;
+      confirmAt = null;
+      render();
+    }
+    function runningAt() {
+      for (const note of pen2.items()) {
+        for (const turn of note.thread || []) {
+          if (RUNNING2.has(turn.state)) return { note, turn };
+        }
+      }
+      return null;
+    }
+    const openComments = () => pen2.items().filter((n) => !n.resolved);
+    const resolvedComments = () => pen2.items().filter((n) => n.resolved);
+    function render() {
+      if (!live) return;
+      if (current != null) {
+        const note = pen2.items().find((n) => n.id === current);
+        if (!note || note.resolved) current = null;
+      }
+      const run = runningAt();
+      pen2.working(run ? run.note.id : null);
+      const mode = pen2.mode();
+      root.classList.toggle("failed", pen2.saveFailed());
+      if (mode) root.dataset.mode = mode;
+      else delete root.dataset.mode;
+      root.toggleAttribute("data-pointing", mode === "note");
+      commentBtn?.classList.toggle("on", mode === "note");
+      drawBtn?.classList.toggle("on", mode === "draw");
+      const requests = pen2.requests();
+      stepper.hidden = !requests.length;
+      countText.textContent = labelOf(countText, requests.filter((r) => r.answered).length + "/" + requests.length);
+      listN.textContent = String(openComments().length);
+      listCar.textContent = view === "list" ? "\u25BE" : "\u25B4";
+      listBtn.classList.toggle("on", !!view);
+      moreBtn.classList.toggle("on", view === "menu");
+      const connected = thread.connected();
+      wireDot.hidden = !connected;
+      wireDot.classList.toggle("working", thread.busy());
+      const p = thread.pending();
+      sendBtn.hidden = !connected;
+      exportBox.classList.toggle("solid", !connected);
+      if (connected) {
+        sendBtn.textContent = labelOf(sendBtn, p.count ? "Send " + p.count : "Send");
+        sendBtn.disabled = !p.count || !pen2.loaded();
+        copyBtn.textContent = labelOf(copyBtn, "\u29C9");
+        copyBtn.title = "Copy JSON";
+      } else {
+        copyBtn.textContent = labelOf(copyBtn, "Copy JSON");
+        copyBtn.removeAttribute("title");
+      }
+      renderHint(mode);
+      renderStrip(p);
+      renderPanel();
+    }
+    function renderHint(mode) {
+      hint.hidden = !mode;
+      if (!mode) return;
+      hint.textContent = "";
+      if (mode === "note") {
+        hint.append(document.createTextNode("click or drag an element"), el2("kbd", null, "esc"));
+      } else {
+        hint.append(
+          document.createTextNode("drag to draw"),
+          el2("kbd", null, "\u2318Z"),
+          document.createTextNode("undo"),
+          el2("kbd", null, "esc")
+        );
+      }
+    }
+    function renderStrip(p) {
+      if (view) {
+        strip.hidden = true;
+        return;
+      }
+      const run = runningAt();
+      const note = run ? run.note : current == null ? null : pen2.items().find((n) => n.id === current && !n.resolved);
+      if (!note) {
+        strip.hidden = true;
+        return;
+      }
+      strip.hidden = false;
+      stripN.textContent = "#" + note.id;
+      if (run) {
+        stripDot.hidden = false;
+        stripDot.className = "rpDot rprDot working";
+        stripSaid.className = "rpSaid";
+        const trail = run.turn.progress;
+        stripSaid.textContent = (trail && trail.length ? trail[trail.length - 1] : turnLine(run.turn)) || "";
+        const can = CANCELLABLE.has(run.turn.state) && typeof thread.transport()?.cancel === "function";
+        stripAct.hidden = !can;
+        stripAct.textContent = "cancel";
+        stripAct.onclick = (e) => {
+          e.stopPropagation();
+          thread.transport().cancel(run.turn.request);
+        };
+      } else {
+        const turns = note.thread || [];
+        const last = turns[turns.length - 1] || null;
+        const unsent = thread.connected() && (p.comments.includes(note.id) || p.drafts.includes(note.id));
+        stripDot.hidden = !last && !unsent;
+        stripDot.className = "rpDot rprDot " + (unsent ? "unsent" : last ? dotClass(last.state) : "");
+        const empty = !String(note.text || "").trim();
+        stripSaid.className = "rpSaid" + (empty ? " dim" : "");
+        stripSaid.textContent = (unsent ? "unsent \xB7 " : "") + firstLine(note.text);
+        stripAct.hidden = true;
+        stripAct.onclick = null;
+      }
+      strip.onclick = () => openComment(note.id);
+    }
+    function head(title, rights) {
+      const h = el2("div", "rpPhead");
+      h.appendChild(document.createTextNode(title));
+      h.appendChild(el2("span", "sp"));
+      for (const r of rights || []) if (r) h.appendChild(r);
+      const x = el2("button", null, "close");
+      x.addEventListener("click", () => setView(null));
+      h.appendChild(x);
+      panel.appendChild(h);
+      return h;
+    }
+    function body(cls) {
+      const b = el2("div", "rpPbody" + (cls ? " " + cls : ""));
+      panel.appendChild(b);
+      return b;
+    }
+    function headBtn(text, fn) {
+      const b = el2("button", null, text);
+      b.addEventListener("click", fn);
+      return b;
+    }
+    function renderPanel() {
+      if (!view) {
+        panel.hidden = true;
+        panel.textContent = "";
+        return;
+      }
+      panel.hidden = false;
+      panel.textContent = "";
+      if (view === "menu") return renderMenu();
+      if (view === "resolved") return renderResolved();
+      if (view === "orphans") return renderOrphans();
+      if (view === "shortcuts") return renderShortcuts();
+      renderList();
+    }
+    function renderList() {
+      const list = openComments();
+      const retired = resolvedComments().length;
+      const orphaned = pen2.orphans().length;
+      head(list.length + (list.length === 1 ? " comment" : " comments"), [
+        retired ? headBtn(retired + " resolved", () => setView("resolved")) : null,
+        orphaned ? headBtn(orphaned + " orphaned", () => setView("orphans")) : null
+      ]);
+      const b = body();
+      if (!list.length) {
+        b.appendChild(el2("div", "rpEmpty", "No comments yet. Press C, then click anything on the page."));
+        return;
+      }
+      const p = thread.pending();
+      for (const note of [...list].reverse()) {
+        const row = el2("div", "rpRow");
+        const item = el2("button", "rpItem");
+        const empty = !String(note.text || "").trim();
+        const said = el2("span", "said" + (empty ? " dim" : ""), firstLine(note.text));
+        const turns = note.thread || [];
+        const running = turns.some((t) => RUNNING2.has(t.state));
+        const unsent = thread.connected() && (p.comments.includes(note.id) || p.drafts.includes(note.id));
+        let mini;
+        if (running) mini = "\xB7\xB7\xB7";
+        else if (note.unread) mini = "\u25CF reply";
+        else if (unsent) mini = "unsent";
+        else if (turns.length) mini = turns.length + "\u21A9";
+        else mini = elementLabel(note.target, note.kind);
+        item.append(el2("span", "n", "#" + note.id), said, el2("span", "mini", mini));
+        item.addEventListener("click", () => openComment(note.id));
+        const drop = el2("button", "sub danger", "\xD7");
+        drop.title = "delete comment " + note.id;
+        drop.addEventListener("click", () => removeComment(note.id));
+        row.append(item, drop);
+        row.addEventListener("mouseenter", () => pen2.highlight(note.id));
+        row.addEventListener("mouseleave", () => pen2.highlight(null));
+        b.appendChild(row);
+      }
+    }
+    function renderResolved() {
+      const list = resolvedComments();
+      head(list.length + " resolved", [headBtn("\u2039 open", () => setView("list"))]);
+      const b = body();
+      if (!list.length) {
+        b.appendChild(el2("div", "rpEmpty", "Nothing retired yet."));
+        return;
+      }
+      for (const note of list) {
+        if (confirmAt === "resolved:" + note.id) {
+          b.appendChild(confirmRow(`Delete comment ${note.id}?`, () => {
+            pen2.remove(note.id);
+            if (!resolvedComments().length) view = "list";
+            setView(view);
+          }));
+          continue;
+        }
+        const row = el2("div", "rpRow");
+        const item = el2("button", "rpItem");
+        item.append(el2("span", "n", "#" + note.id), el2("span", "said dim", firstLine(note.text)));
+        item.addEventListener("click", () => {
+          thread.resolve(note.id, false);
+          setView(null);
+          openComment(note.id);
+        });
+        const back = el2("button", "sub", "reopen");
+        back.addEventListener("click", () => {
+          thread.resolve(note.id, false);
+          setView(null);
+          openComment(note.id);
+        });
+        const drop = el2("button", "sub danger", "discard");
+        drop.addEventListener("click", () => {
+          confirmAt = "resolved:" + note.id;
+          render();
+        });
+        row.append(item, back, drop);
+        b.appendChild(row);
+      }
+    }
+    function renderOrphans() {
+      const list = pen2.orphans();
+      head(list.length + " orphaned", [headBtn("\u2039 open", () => setView("list"))]);
+      panel.appendChild(el2("div", "rpNote", "answers to questions the page no longer asks. They still export."));
+      const b = body();
+      for (const o of list) {
+        const row = el2("div", "rpRow");
+        const item = el2("button", "rpItem");
+        item.append(el2("span", "said dim", o.askedWas || o.key), el2("span", "mini", firstLine(o.answer)));
+        const drop = el2("button", "sub danger", "discard");
+        drop.addEventListener("click", () => {
+          pen2.answer(o.key, "");
+          if (!pen2.orphans().length) view = "list";
+          setView(view);
+        });
+        row.append(item, drop);
+        b.appendChild(row);
+      }
+    }
+    function renderShortcuts() {
+      head("shortcuts", [headBtn("\u2039 open", () => setView("list"))]);
+      const b = body();
+      const keysBox = el2("div", "rpKeys");
+      for (const [k, said] of SHORTCUTS) {
+        const line = el2("div");
+        line.append(el2("kbd", null, k), el2("span", null, said));
+        keysBox.appendChild(line);
+      }
+      b.appendChild(keysBox);
+    }
+    function mi(text, right, fn, danger) {
+      const b = el2("button", "mi" + (danger ? " danger" : ""));
+      b.appendChild(document.createTextNode(text));
+      if (right != null) b.appendChild(el2("span", "k", String(right)));
+      b.addEventListener("click", fn);
+      return b;
+    }
+    function confirmRow(text, go) {
+      const row = el2("div", "rpConfirm");
+      row.append(document.createTextNode(text), el2("span", "sp"));
+      const no = el2("button", null, "cancel");
+      no.addEventListener("click", () => {
+        confirmAt = null;
+        render();
+      });
+      const yes = el2("button", "go", "delete");
+      yes.addEventListener("click", () => {
+        confirmAt = null;
+        go();
+      });
+      row.append(no, yes);
+      return row;
+    }
+    function renderMenu() {
+      head("more");
+      if (pen2.saveFailed()) {
+        panel.appendChild(el2(
+          "div",
+          "rpWarn",
+          "Not saving. These comments only exist in this tab. Copy JSON before you close it."
+        ));
+      }
+      const b = body("rpMenu");
+      b.appendChild(mi("Copy JSON", null, () => {
+        copy("all");
+        setView(null);
+      }));
+      b.appendChild(mi("Copy comments only", null, () => {
+        copy("comments");
+        setView(null);
+      }));
+      b.appendChild(mi("Copy drawing only", null, () => {
+        copy("drawing");
+        setView(null);
+      }));
+      if (thread.connected()) {
+        b.appendChild(el2("div", "sep"));
+        const label = el2("label", "mi");
+        const box = el2("input");
+        box.type = "checkbox";
+        box.checked = !prefs.hold();
+        box.addEventListener("change", () => {
+          prefs.setHold(!box.checked);
+          render();
+        });
+        label.append(box, document.createTextNode("Send comments as I finish them"));
+        b.appendChild(label);
+      }
+      b.appendChild(el2("div", "sep"));
+      b.appendChild(mi("Shortcuts", "?", () => setView("shortcuts")));
+      const status = el2("div", "status");
+      if (thread.connected()) status.append(el2("span", "rpDot ok"), document.createTextNode("agent connected"));
+      else status.append(document.createTextNode("no agent on this page"));
+      b.appendChild(status);
+      b.appendChild(el2("div", "sep"));
+      const comments = pen2.items().length;
+      const strokes = pen2.strokes().length;
+      if (confirmAt === "comments") {
+        b.appendChild(confirmRow(`Delete ${comments} comment${comments === 1 ? "" : "s"}?`, () => pen2.clearNotes()));
+      } else {
+        const row = mi("Clear all comments\u2026", comments, () => {
+          confirmAt = "comments";
+          render();
+        }, true);
+        row.disabled = !comments;
+        b.appendChild(row);
+      }
+      if (confirmAt === "ink") {
+        b.appendChild(confirmRow(`Delete ${strokes} stroke${strokes === 1 ? "" : "s"}?`, () => pen2.clearStrokes()));
+      } else {
+        const row = mi("Clear all ink\u2026", strokes, () => {
+          confirmAt = "ink";
+          render();
+        }, true);
+        row.disabled = !strokes;
+        b.appendChild(row);
+      }
+    }
+    function openComment(id) {
+      const note = pen2.items().find((n) => n.id === id);
+      if (!note) return;
+      current = id;
+      setView(null);
+      popover.openComment(note);
+    }
+    function removeComment(id) {
+      const note = pen2.items().find((n) => n.id === id);
+      if (!note) return;
+      popover.closeIf(id);
+      pen2.remove(id);
+      render();
+      toast(`comment ${id} deleted`, () => pen2.restore([note]));
+    }
+    function hideTip() {
+      if (!tip.hidden) tip.hidden = true;
+    }
+    function showTip(node) {
+      const text = node.dataset.tooltip ? "" : node.getAttribute(attr);
+      if (!text) return hideTip();
+      tip.textContent = text;
+      tip.hidden = false;
+      const r = node.getBoundingClientRect();
+      const t = tip.getBoundingClientRect();
+      const above = r.top - t.height - 8;
+      tip.style.left = Math.max(8, Math.min(r.left, innerWidth - t.width - 8)) + "px";
+      tip.style.top = (above < 8 ? r.bottom + 8 : above) + "px";
+    }
+    function showPeek(node, text) {
+      tip.textContent = text;
+      tip.hidden = false;
+      const r = node.getBoundingClientRect();
+      const t = tip.getBoundingClientRect();
+      let left = r.right + 8;
+      if (left + t.width > innerWidth - 8) left = Math.max(8, r.left - t.width - 8);
+      tip.style.left = left + "px";
+      tip.style.top = Math.max(8, Math.min(r.top, innerHeight - t.height - 8)) + "px";
+    }
+    const onHover = (e) => {
+      if (e.target && e.target.closest && e.target.closest(".laMarkers")) return;
+      const node = e.target && e.target.closest ? e.target.closest("[" + attr + "]") : null;
+      node ? showTip(node) : hideTip();
+    };
+    const onMarkerHover = (e) => {
+      const hit = e.target && e.target.closest ? e.target.closest("[data-la-note]") : null;
+      if (!hit) return hideTip();
+      const note = pen2.items().find((n) => n.id === Number(hit.dataset.laNote));
+      if (!note) return hideTip();
+      showPeek(hit, markerTitle(note));
+    };
+    document.addEventListener("mouseover", onHover);
+    document.addEventListener("focusin", onHover);
+    window.addEventListener("scroll", hideTip, true);
+    const markerLayer = (mountNode || document).querySelector(".laMarkers");
+    markerLayer?.addEventListener("mouseover", onMarkerHover);
+    markerLayer?.addEventListener("mouseout", hideTip);
+    function onKey(e) {
+      const typing = isTyping(e.target) || isTyping(document.activeElement);
+      if (e.key === "Escape") {
+        if (view) return setView(null);
+        if (popover.isOpen()) return popover.cancel();
+        if (pen2.mode()) return setMode(null);
+        return;
+      }
+      if (typing) {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && popover.isOpen()) {
+          e.preventDefault();
+          popover.finish();
+        }
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && pen2.mode() === "draw") {
+          e.preventDefault();
+          pen2.undoStroke();
+        }
+        return;
+      }
+      if (e.key === "c" && tools2.has("comment")) return toggleMode("note");
+      if (e.key === "d" && tools2.has("draw")) return toggleMode("draw");
+      if (e.key === "n" && pen2.requests().length) return step(1);
+      if (e.key === "?") return setView(view === "shortcuts" ? null : "shortcuts");
+    }
+    if (keys) window.addEventListener("keydown", onKey);
+    function onPointerDown(e) {
+      if (view && !e.target.closest(".rpDock")) setView(null);
+      if (!popover.isOpen()) return;
+      if (e.target.closest("[data-la-ui]")) return;
+      if (e.target.closest(INTERACTIVE)) return;
+      popover.leave();
+    }
+    document.addEventListener("pointerdown", onPointerDown, true);
+    commentBtn?.addEventListener("click", () => toggleMode("note"));
+    drawBtn?.addEventListener("click", () => toggleMode("draw"));
+    prevBtn.addEventListener("click", () => step(-1));
+    nextBtn.addEventListener("click", () => step(1));
+    listBtn.addEventListener("click", () => setView(view === "list" ? null : "list"));
+    moreBtn.addEventListener("click", () => setView(view === "menu" ? null : "menu"));
+    copyBtn.addEventListener("click", () => copy("all"));
+    sendBtn.addEventListener("click", () => {
+      popover.leave();
+      const want = thread.pending().count;
+      const started = thread.sendPending();
+      if (!started && want) flash(sendBtn, "not sent, copy instead");
+      render();
+    });
+    wireDot.addEventListener("click", () => {
+      const run = runningAt();
+      if (run) return openComment(run.note.id);
+      setView(view === "list" ? null : "list");
+    });
+    pen2.addEventListener("mode", render);
+    pen2.addEventListener("change", (e) => {
+      const d = e.detail || {};
+      if (d.action === "note" && d.item) current = d.item.id;
+      if (d.action === "add" && d.item) current = d.item.id;
+      if (d.action === "load") {
+        const open = openComments();
+        current = open.length ? open[open.length - 1].id : null;
+      }
+    });
+    pen2.addEventListener("item:add", (e) => {
+      if (!e.detail.sticky) pen2.setMode(null);
+      current = e.detail.item.id;
+      popover.openComment(e.detail.item, { fresh: true });
+      render();
+    });
+    pen2.addEventListener("item:click", (e) => {
+      current = e.detail.item.id;
+      popover.openComment(e.detail.item);
+      render();
+    });
+    pen2.addEventListener("request:click", (e) => popover.openAsk(e.detail.request.key));
+    root.classList.add("rpTeach");
+    const teachTimer = setTimeout(() => root.classList.remove("rpTeach"), 8e3);
+    return {
+      node: root,
+      render,
+      setMode,
+      setView,
+      toast,
+      copy,
+      exportObject,
+      flashCount: (text) => flash(countText, text),
+      destroy() {
+        live = false;
+        clearTimeout(teachTimer);
+        for (const { timer } of flashing.values()) clearTimeout(timer);
+        flashing.clear();
+        hideToast();
+        if (keys) window.removeEventListener("keydown", onKey);
+        document.removeEventListener("pointerdown", onPointerDown, true);
+        document.removeEventListener("mouseover", onHover);
+        document.removeEventListener("focusin", onHover);
+        window.removeEventListener("scroll", hideTip, true);
+        window.removeEventListener("load", applyTheme);
+        dark.removeEventListener("change", applyTheme);
+        themeWatch.disconnect();
+        markerLayer?.removeEventListener("mouseover", onMarkerHover);
+        markerLayer?.removeEventListener("mouseout", hideTip);
+        clickThroughRule?.remove();
+        clickThroughRule = null;
+        root.remove();
+        tip.remove();
+      }
+    };
+  }
+
+  // src/mount.js
+  function mount(opts = {}) {
+    const key = opts.key ?? location.pathname;
+    const attr = opts.attr || "data-review-ask";
+    const tools2 = new Set(opts.tools || ["comment", "draw"]);
+    const mountNode = opts.mount ?? document.body;
+    const pen2 = create({ key, mount: mountNode });
+    const listeners = /* @__PURE__ */ new Set();
+    if (typeof opts.onComment === "function") listeners.add(opts.onComment);
+    const holdKey = "redpen:hold:" + key;
+    const prefs = {
+      hold: () => {
+        try {
+          return localStorage.getItem(holdKey) === "1";
+        } catch {
+          return false;
+        }
+      },
+      setHold: (v) => {
+        try {
+          v ? localStorage.setItem(holdKey, "1") : localStorage.removeItem(holdKey);
+        } catch {
+        }
+      }
+    };
+    let live = true;
+    const thread = createThread({ pen: pen2, listeners, prefs, onTurn });
+    const popover = createPopover({
+      pen: pen2,
+      thread,
+      prefs,
+      toast: (text, undo) => dock.toast(text, undo),
+      onChange: () => dock.render(),
+      anchor: () => dock.node,
+      step
+    });
+    const dock = createDock({
+      pen: pen2,
+      thread,
+      popover,
+      prefs,
+      tools: tools2,
+      attr,
+      mountNode,
+      step,
+      clickThrough: opts.clickThrough || "",
+      keys: opts.keys !== false
+    });
+    thread.setOpener((id) => {
+      const note = pen2.items().find((n) => n.id === id);
+      if (note) popover.openComment(note);
+    });
+    function onTurn(noteId, turnId) {
+      if (!live) return;
+      dock.render();
+      popover.onTurn(noteId, turnId);
+    }
+    function scan() {
+      const list = [];
+      const seen = /* @__PURE__ */ new Set();
+      for (const node of document.querySelectorAll("[" + attr + "]")) {
+        const ask = node.getAttribute(attr);
+        if (!node.id) {
+          console.warn("[redpen] skipped a question with no id: the id is the answer's key", node);
+          continue;
+        }
+        if (seen.has(node.id)) {
+          console.warn("[redpen] skipped a duplicate question id: " + node.id, node);
+          continue;
+        }
+        seen.add(node.id);
+        list.push({ key: node.id, ask, el: node });
+      }
+      pen2.setRequests(list);
+      return list.length;
+    }
+    function step(dir) {
+      popover.flush();
+      const list = pen2.requests();
+      if (!list.length) return;
+      const at = popover.openAt();
+      const i = at && at.kind === "ask" ? list.findIndex((r) => r.key === at.key) : -1;
+      const from = i < 0 ? dir > 0 ? -1 : 0 : i;
+      for (let n = 1; n <= list.length; n++) {
+        const r = list[((from + dir * n) % list.length + list.length) % list.length];
+        if (dir < 0 || !r.answered) return popover.openAsk(r.key);
+      }
+      popover.leave();
+      dock.flashCount("all answered");
+    }
+    function refresh() {
+      popover.leave();
+      scan();
+      dock.render();
+    }
+    scan();
+    dock.render();
+    pen2.addEventListener("change", (e) => {
+      if (!live) return;
+      dock.render();
+      if (e.detail.action === "load") {
+        thread.sweepUnfinished();
+        popover.reseed();
+      }
+    });
+    pen2.addEventListener("save:error", () => dock.render());
+    pen2.addEventListener("layout", popover.relayout);
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => {
+        if (live) pen2.layout();
+      });
+    }
+    const adapter = {
+      pen: pen2,
+      refresh,
+      open: popover.openAsk,
+      next: () => step(1),
+      prev: () => step(-1),
+      point: (on) => dock.setMode(on ? "note" : null),
+      mode(v) {
+        if (v === void 0) return pen2.mode();
+        dock.setMode(v || null);
+        return pen2.mode();
+      },
+      copy: (which) => dock.copy(which),
+      json: () => dock.exportObject("all"),
+      send: () => thread.sendPending(),
+      thread,
+      // Registered after the fact so a transport can be a separate bundle that
+      // attaches to this object, rather than something mount() has to be told
+      // about before it runs. Returns its own unsubscribe: a caller may only ever
+      // remove the listener it added.
+      onComment(fn) {
+        if (typeof fn !== "function") return () => {
+        };
+        listeners.add(fn);
+        return () => listeners.delete(fn);
+      },
+      destroy() {
+        live = false;
+        popover.leave();
+        thread.disconnect(true);
+        dock.destroy();
+        popover.destroy();
+        pen2.destroy();
+      }
+    };
+    function attachWire(wire) {
+      if (wire && typeof wire.send === "function") {
+        thread.connect(wire);
+        dock.render();
+        return;
+      }
+      const go = () => {
+        if (live) attach(adapter);
+      };
+      const ready = window.clay && window.clay.ready;
+      if (ready && typeof ready.then === "function") ready.then(go, go);
+      else go();
+    }
+    if (opts.wire !== false) attachWire(opts.wire);
+    return adapter;
   }
 
   // src/standalone.js
   var instance = null;
-  function pen() {
-    if (!instance) {
-      instance = create({ key: window.REDPEN_KEY ?? location.pathname, mount: document.body });
-      instance.addEventListener("mode", syncPills);
-      attachKeys(instance);
-      setDataSource((include) => {
-        const d = instance.data();
-        for (const g of Object.values(d.targets)) {
-          if (!include.notes) delete g.notes;
-          if (!include.draw) delete g.strokes;
-        }
-        return d;
-      });
-    }
+  function mountOnce(opts = {}) {
+    if (!instance) instance = mount({ key: window.REDPEN_KEY ?? location.pathname, ...opts });
     return instance;
   }
+  function review() {
+    return mountOnce();
+  }
+  function pen() {
+    return review().pen;
+  }
+  var tool = (id, mode) => ({
+    id,
+    getOn: () => review().pen.mode() === mode,
+    setOn: (v) => review().mode(v ? mode : null)
+  });
+  var tools = [tool("notes", "note"), tool("draw", "draw")];
+  function json() {
+    return JSON.stringify(review().json(), null, 2);
+  }
+  function off() {
+    review().mode(null);
+  }
+  function register() {
+    console.warn("[redpen] FeedbackHub.register is gone: the dock has a fixed set of tools");
+    return { setOn() {
+    } };
+  }
   function installNotes() {
-    if (window.NotesTool) return window.NotesTool;
-    const p = pen();
-    attachNotesPanel(p);
-    const handle = register({
-      id: "notes",
-      label: "NOTES",
-      getOn: () => p.mode() === "note",
-      setOn: (v) => p.setMode(v ? "note" : p.mode() === "note" ? null : p.mode()),
-      clear: () => p.clearNotes()
-    });
-    window.NotesTool = {
-      on: (v) => handle.setOn(v),
-      clear: () => p.clearNotes(),
-      layout: () => p.layout(),
-      items: () => p.items()
-    };
+    if (!window.NotesTool) {
+      review();
+      window.NotesTool = {
+        on: (v) => tools[0].setOn(v),
+        clear: () => pen().clearNotes(),
+        layout: () => pen().layout(),
+        items: () => pen().items()
+      };
+    }
     return window.NotesTool;
   }
   function installDraw() {
-    if (window.DrawTool) return window.DrawTool;
-    const p = pen();
-    const handle = register({
-      id: "draw",
-      label: "DRAW",
-      labelOn: "DRAWING",
-      getOn: () => p.mode() === "draw",
-      setOn: (v) => p.setMode(v ? "draw" : p.mode() === "draw" ? null : p.mode()),
-      clear: () => p.clearStrokes()
-    });
-    window.DrawTool = {
-      cfg: CFG,
-      tune: (o) => Object.assign(CFG, o),
-      on: (v) => handle.setOn(v),
-      undo: () => p.undoStroke(),
-      clear: () => p.clearStrokes()
-    };
-    Object.defineProperty(window.DrawTool, "strokes", { get: () => p.strokes(), enumerable: true });
+    if (!window.DrawTool) {
+      review();
+      window.DrawTool = {
+        cfg: CFG,
+        tune: (o) => Object.assign(CFG, o),
+        on: (v) => tools[1].setOn(v),
+        undo: () => pen().undoStroke(),
+        clear: () => pen().clearStrokes()
+      };
+      Object.defineProperty(window.DrawTool, "strokes", { get: () => pen().strokes(), enumerable: true });
+    }
     return window.DrawTool;
   }
   function installHub() {
@@ -2060,6 +4088,9 @@
   }
 
   // src/index.js
+  if (!window.Redpen) window.Redpen = { create, cfg: CFG, describe, cssPath, resolve, mount: mountOnce };
+  if (!window.RedpenReview) window.RedpenReview = { mount: mountOnce };
+  if (!window.RedpenWire) window.RedpenWire = { attach };
   installHub();
   installNotes();
   installDraw();

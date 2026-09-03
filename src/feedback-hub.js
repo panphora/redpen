@@ -1,13 +1,11 @@
-// feedback-hub.js — the shared chrome + copy registry, kept as a stable import
-// path. It now re-exports the default UI adapter's hub (ui.js), which is where
-// the bar, the pills, the include-checkboxes and COPY JSON live.
+// feedback-hub.js — the shared hub globals, kept as a stable import path. The
+// dock owns the chrome now, so `register` is a no-op that says so; `json`, `off`
+// and `tools` still work.
 //
-//   import { register } from './feedback-hub.js';
-//   const handle = register({ id, label, labelOn, getOn, setOn, clear, getData });
-//   handle.setOn(v)   // toggle from outside; keeps the pill in sync
+//   import { json, off, tools } from './feedback-hub.js';
 
 import { installHub } from './standalone.js';
 
-export { register, json, off, tools } from './ui.js';
+export { register, json, off, tools } from './standalone.js';
 
 installHub();

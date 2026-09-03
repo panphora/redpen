@@ -69,16 +69,19 @@ export function createInkLayer({ mount, targets }) {
     svg.textContent = '';
     for (const s of strokes) {
       if (!s.points || !s.points.length) continue;
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', pathData(s.points));
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', s.color || '#000');
-      path.setAttribute('stroke-width', s.width || 3);
-      path.setAttribute('stroke-linecap', 'round');
-      path.setAttribute('stroke-linejoin', 'round');
-      path.setAttribute('vector-effect', 'non-scaling-stroke');
-      path.dataset.laStroke = s.id;
-      svg.appendChild(path);
+      // the halo first, then the ink over it, so a stroke reads on any page
+      for (const [color, width] of [['#FDFDFC', (s.width || 3) + 2], [s.color || '#17110C', s.width || 3]]) {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', pathData(s.points));
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', color);
+        path.setAttribute('stroke-width', width);
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        path.setAttribute('vector-effect', 'non-scaling-stroke');
+        path.dataset.laStroke = s.id;
+        svg.appendChild(path);
+      }
     }
   }
 

@@ -1,5 +1,5 @@
 import { expect } from '@esm-bundle/chai';
-import { mount } from '../src/review.js';
+import { mount } from '../src/mount.js';
 import { attach, decode, nearestKey, payloadFor } from '../src/wire.js';
 
 // The two halves of putting a comment on the wire: the review adapter noticing
@@ -28,6 +28,17 @@ function pop() {
 function footBtn(label) {
   return [...pop().querySelectorAll('.rprFoot button')].find(b => b.textContent.startsWith(label));
 }
+
+// Delete moved into the popover's own menu, behind the ⋯ button, and asks in
+// place before it goes.
+function deleteComment() {
+  pop().querySelector('.rpPopMore').click();
+  pop().querySelector('[data-act="delete"]').click();
+  [...pop().querySelectorAll('.rpConfirm button')].find(b => b.textContent === 'delete').click();
+}
+
+const wireDot = () => document.querySelector('.rpWire');
+const strip = () => document.querySelector('.rpStrip');
 
 // A real gesture, because there is no public way to add a note: point mode puts
 // a capture overlay over the page, and a tap on it files an element note about
@@ -168,7 +179,7 @@ it('says nothing about a discarded comment', () => {
 
   tapComment();
   say('never mind');
-  footBtn('discard').click();
+  deleteComment();
 
   expect(seen.length).to.equal(0);
 });
@@ -217,19 +228,22 @@ it('shows what the agent is doing, and cancels it', async () => {
   footBtn('done').click();
   const id = only(wire);
 
-  const pill = document.querySelector('.rprWire');
-  expect(pill.hidden).to.equal(false);
+  const noteId = review.json().items.find(i => i.kind === 'comment').id;
+  expect(wireDot().hidden).to.equal(false);
+  expect(strip().hidden).to.equal(false);
 
   wire.status(id, 'reading the file');
-  expect(pill.textContent).to.contain('reading the file');
+  expect(strip().textContent).to.contain('reading the file');
 
-  pill.querySelector('button').click();
+  strip().querySelector('.rpStripAct').click();
   expect(wire.sent.some(s => s.cancelled === id)).to.equal(true);
 
   // A terminal now travels on handle.done rather than the subscription, so that
-  // an outcome clayjs never emits cannot leave a request spinning forever.
+  // an outcome clayjs never emits cannot leave a request spinning forever. The
+  // strip goes back to reporting the comment; the outcome is on the thread.
   await wire.finish(id, 'error', 'no agent is attached to this file');
-  expect(pill.textContent).to.contain('no agent is attached');
+  expect(review.thread.of(noteId)[0].state).to.equal('error');
+  expect(review.thread.of(noteId)[0].error).to.contain('no agent is attached');
 });
 
 it('walks to the nearest keyed ancestor, data-id first', () => {
@@ -332,7 +346,7 @@ it('keeps every comment listener separate', async () => {
 
   const first = attach(review);
   expect(attach(review)).to.equal(first);
-  expect(document.querySelectorAll('.rprWire').length).to.equal(1);
+  expect(wireDot().hidden).to.equal(false);
 
   tapComment();
   say('while attached');
@@ -346,8 +360,7 @@ it('keeps every comment listener separate', async () => {
   // because a DOM node as the actual value wedges the test runner when it fails.
   await wire.finish(only(wire), 'done');
   first.detach();
-  expect(!!document.querySelector('.rprWire')).to.equal(false);
-  expect(!!document.getElementById('rprWireStyle')).to.equal(false);
+  expect(wireDot().hidden).to.equal(true);
 
   tapComment();
   say('after detaching');
@@ -355,6 +368,17 @@ it('keeps every comment listener separate', async () => {
   // The page's own listener is untouched; only the transport went away.
   expect(fromMount.length).to.equal(2);
   expect(wire.sent.length).to.equal(1);
+});
+
+it('refuses a review that already has a transport', async () => {
+  const wire = fakeWire();
+  window.clay = { wire };
+  review = mount({ key: 'test:one-transport', wire: false });
+  await settled();
+
+  review.thread.connect({ label: 'fake', send: request => ({ id: request.id }) });
+  expect(attach(review)).to.equal(null);
+  expect(review.thread.connected()).to.equal(true);
 });
 
 // A detach in the middle of a request. Letting it through would leave the
@@ -373,7 +397,7 @@ it('holds a detach until the request in flight ends', async () => {
   const id = only(wire);
 
   link.detach();
-  expect(!!document.querySelector('.rprWire')).to.equal(true);
+  expect(wireDot().hidden).to.equal(false);
 
   // Refused rather than queued: a queue would drain into a transport that is
   // already on its way out.
@@ -383,7 +407,7 @@ it('holds a detach until the request in flight ends', async () => {
   expect(wire.sent.length).to.equal(1);
 
   await wire.finish(id, 'done');
-  expect(!!document.querySelector('.rprWire')).to.equal(false);
+  expect(wireDot().hidden).to.equal(true);
 });
 
 // A status line used to rebuild the whole conversation, which closed the

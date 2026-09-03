@@ -3,16 +3,19 @@
 Page review tools for leaving structured feedback on any HTML page, built to hand
 that feedback to an agent as JSON.
 
-redpen is a **headless engine** plus **UI adapters**, shipped as three bundles:
+redpen is a **headless engine** plus **UI adapters**, shipped as four bundles:
 
-- `dist/redpen.js` — engine + default UI. The standalone experience: the bottom-right
-  hub bar, the `#laNotes` panel, global cmd+Z, and the `NotesTool` / `DrawTool` /
-  `FeedbackHub` console handles.
-- `dist/redpen-core.js` — the engine alone, as `window.Redpen.create(...)`. Zero
+- `dist/redpen.js`: engine + the dock. The standalone experience, one adapter per
+  page, plus the `NotesTool` / `DrawTool` / `FeedbackHub` console handles.
+- `dist/redpen-core.js`: the engine alone, as `window.Redpen.create(...)`. Zero
   chrome, no global keyboard, no clipboard. The host owns all of that.
-- `dist/redpen-review.js` — engine + the review adapter, as
-  `window.RedpenReview.mount(...)`. For the other direction: the page asks
-  questions about itself and someone answers them. See [Requests](#requests).
+- `dist/redpen-review.js`: engine + the dock as a mountable adapter,
+  `window.RedpenReview.mount(...)`. The same UI, created and destroyed when the host
+  says so, and able to answer questions the page asks about itself. See
+  [Requests](#requests).
+- `dist/redpen-wire.js`: the transport, `window.RedpenWire.attach(review)`. Hands a
+  finished comment to an agent over `clay.wire` and brings the reply back. See
+  [The thread](#the-thread).
 
 ## What the engine does
 
@@ -127,18 +130,54 @@ pen.setMode('note');
 pen.show('p19');   // the one call on panel switch
 ```
 
-Events: `change` `{action, item?}` · `item:add` `{item}` · `item:click` `{item}` ·
-`mode` `{mode}` · `target` `{target}` · `layout` (markers were re-placed).
+Events: `change` `{action, item?}` · `item:add` `{item, sticky}` · `item:click`
+`{item}` · `request:click` `{request}` · `mode` `{mode}` · `target` `{target}` ·
+`layout` (markers were re-placed) · `save:error`.
 
 Methods: `setMode(mode)` `mode()` `items(targetId?)` `strokes(targetId?)`
 `setNote(id, text)` `updateNote(id, fn)` `updateNotes(fn)` `remove(id)`
-`undoStroke(targetId?)` `clear(targetId?)`
-`clearNotes(targetId?)` `clearStrokes(targetId?)` `data(targetId?)` `layout()`
+`restore(items)` `undoStroke(targetId?)` `clear(targetId?)`
+`clearNotes(targetId?)` `clearStrokes(targetId?)` `data(targetId?)` `review()`
+`highlight(id?)` `working(id?)` `layout()`
 `loaded()` `destroy()` · `addTarget({id, selector|el, basis})` `removeTarget(id)`
 `targets()` `show(targetId|null)` `target()`.
 
 The engine binds **no** global keyboard and **no** clipboard. It exposes
 `undoStroke()`; the host routes keys and owns COPY.
+
+### The dock
+
+`dist/redpen.js` and `dist/redpen-review.js` put the same dock in the bottom-right
+corner. It is the whole UI:
+
+- **comment** and **draw**, the two mode toggles.
+- a **stepper** (`2/6`), shown only when the page asks questions of its own.
+- a **list** button carrying the number of open comments. It opens a panel of them,
+  newest first, with a way through to the resolved ones and to answers whose
+  question the page no longer asks.
+- **⋯**, the menu: the three copy variants, whether comments send as you finish
+  them, the shortcut card, whether an agent is connected, and clear-all for comments
+  and for ink. Every destructive row confirms in place.
+- a **wire dot**, present only when an agent is connected and filled while it works.
+- **Copy JSON**, which shrinks to a `⧉` beside **Send** once an agent is connected.
+
+Clicking an element in comment mode pins a numbered comment to it and opens a box on
+the element itself. Leaving the box is what saves what you wrote, and what sends it
+when an agent is connected and sending is not held; Escape backs out without sending.
+Hovering a marker or a list row shows what it says without opening it.
+
+| key | does |
+|---|---|
+| `C` | comment mode on / off |
+| `D` | draw mode on / off |
+| `Esc` | back out one step |
+| `⌘↵` | done, or send a follow-up |
+| `⌘Z` | undo the last stroke, in draw mode |
+| `N` | next unanswered question, when the page asks any |
+| `?` | the shortcut card |
+| shift-click | place a comment and stay in comment mode |
+
+Pass `keys: false` to `mount()` to bind none of them.
 
 Standalone, on a served page (modules):
 
@@ -180,9 +219,9 @@ so artwork mounted later (lazily, on scroll) is covered too.
 
 A numbered chip appears at the end of each asked element, in its own
 `pointer-events: auto` layer (`.laMarkers` is not clickable, by design, so note
-markers never are). Clicking it opens a popover with the question and a field. The
-bar counts what is left, steps between unanswered questions, toggles the volunteer
-mode (plain redpen note capture), and copies everything as one JSON blob.
+markers never are). Clicking it opens a box with the question and a field. The dock
+counts what is left, steps between unanswered questions, toggles comment mode, and
+copies everything as one JSON blob.
 
 **Requests are never persisted.** The page re-declares them on every load, so the
 HTML is the truth about which questions exist: no migration, no reconciliation rule,
@@ -223,17 +262,20 @@ not, and never touches redpen: it arrives as an ordinary external change to the
 file, through live sync. A finished request and a visible change are two different
 events, which is why the thread reports both.
 
-```js
-const review = RedpenReview.mount({});
-RedpenWire.attach(review);   // the clay.wire transport; returns null with no wire
+```html
+<script src="dist/redpen-review.js"></script>
+<script src="dist/redpen-wire.js"></script>
+<script>const review = RedpenReview.mount({});</script>
 ```
 
-`attach` needs `clay.wire`. Without it every comment still lands in the clipboard
-through COPY JSON, which is the ordinary shape of a review page with no agent.
+`mount()` attaches the transport itself when the bundle is there, so the only reason
+to call `RedpenWire.attach(review)` by hand is `wire: false`. `attach` needs
+`clay.wire`; without it every comment still lands in the clipboard through Copy JSON,
+which is the ordinary shape of a review page with no agent.
 
 ### The seam
 
-`review.js` owns every piece of state. The transport owns the live handles and
+`thread.js` owns every piece of state, and `mount.js` wires it to the dock and the popover. The transport owns the live handles and
 the translation in both directions, and creates **no DOM at all**.
 
 ```js
@@ -250,12 +292,12 @@ review.thread.connected() / .busy()
 // what a transport implements
 { send(request) -> { id } | null, cancel(id) -> boolean, label, attach?(sink), detach?() }
 
-// what review.js hands it
+// what thread.js hands it
 { state(id, state, error), progress(id, line), reply(id, text, { append }), note(id, line) }
 ```
 
 `note` is the transport's own remark about an exchange, which is how a reply that
-arrived broken becomes visible without review.js knowing what a status line is.
+arrived broken becomes visible without thread.js knowing what a status line is.
 
 Two rules the seam depends on. **redpen mints the request id**, because clayjs
 emits the first frame from inside `send()` and a mapping built from the return
@@ -294,13 +336,13 @@ a reply cannot send anything.
 ### Reading a reply
 
 A reply that arrives while the popover is shut reaches you through three surfaces
-of increasing durability: the pill for 2.5s, a ring on the marker, and the stored
+of increasing durability: the dock strip while the request runs, a ring on the marker, and the stored
 `unread` flag that survives a reload. Opening the thread is what clears it.
 
 ### Resolve
 
-`resolve` in the popover's top row retires a comment: it leaves the page entirely,
-the bar grows an `N resolved` button, and that list offers `reopen` and `discard`.
+`Resolve` in the popover's `⋯` menu retires a comment: it leaves the page entirely,
+the list panel grows an `N resolved` button, and that list offers `reopen` and `discard`.
 Resolved means *you are done with this*, not that the agent succeeded — a resolved
 comment still exports, carrying `resolved` and its thread, and `review()`'s summary
 counts it.
@@ -367,7 +409,7 @@ back at it.
 
 ## Host integration
 
-Four things a host page needs and cannot infer from the API.
+What a host page needs and cannot infer from the API.
 
 ### What `mount()` returns
 
@@ -377,13 +419,16 @@ The adapter, not the engine. The engine is on `.pen`:
 const review = RedpenReview.mount({ clickThrough: 'canvas.beat-video' });
 
 review.pen         // the RedpenEngine, for everything in the section above
-review.refresh()   // rescan the DOM for questions (closes the popover first)
-review.open(key)   // open one question's popover
+review.refresh()   // rescan the DOM for questions (closes the box first)
+review.open(key)   // open one question
 review.next() / review.prev()   // step through unanswered questions
-review.point(on)   // toggle volunteer mode (plain note capture)
-review.copy()      // copy the whole review to the clipboard
+review.point(on)   // comment mode on or off
+review.mode(v)     // set 'note' | 'draw' | null, or read the current mode
+review.copy(which) // copy 'all' (default), 'comments' or 'drawing' to the clipboard
 review.json()      // the same payload, as an object
+review.send()      // send every held comment, returns how many started
 review.thread      // the conversation on a comment; see The thread
+review.onComment(fn)  // called with each finished comment; returns its own unsubscribe
 review.destroy()
 ```
 
@@ -394,33 +439,77 @@ rule, and destroys the engine. Answers live in IndexedDB, so a later `mount` pic
 exactly where the last one left off. Call `refresh()` rather than remounting when only
 the questions changed.
 
-### Moving the bar
+On `dist/redpen.js` both aliases return the page's one adapter, which the bundle mounts
+on load; pass options through `window.REDPEN_KEY` or call `Redpen.create` for a second
+engine.
+
+### Mount options
+
+| option | default | what it does |
+|---|---|---|
+| `key` | `location.pathname` (`review:` + pathname through `RedpenReview.mount` in the review bundle) | storage namespace, so one page keeps one set of comments |
+| `mount` | `document.body` | the element the engine paints its overlay into |
+| `attr` | `data-review-ask` | the attribute the page authors its questions on |
+| `tools` | `['comment', 'draw']` | which mode toggles the dock builds |
+| `keys` | `true` | bind the keyboard shortcuts |
+| `clickThrough` | none | a selector for artwork that stays clickable under the capture overlay |
+| `wire` | auto | the transport; see below |
+| `onComment` | none | a first listener, the same thing `onComment(fn)` adds |
+
+### The transport
+
+`wire` is `auto`: when `dist/redpen-wire.js` is on the page and clayjs exposes
+`clay.wire`, the dock connects itself and grows a **Send** button. A page with no wire
+logs one warning and keeps `Copy JSON`, which is the ordinary case. Pass a transport
+object of your own (anything with `send`, and optionally `attach`, `detach` and
+`cancel`) to connect that one instead, or `wire: false` to connect nothing and attach
+later yourself.
+
+### Moving the dock
 
 The adapter's stylesheet is **prepended**, not appended, so a host stylesheet of equal
-specificity wins without `!important`:
+specificity wins without `!important`. The dock root carries `.rpDock` and `.rprBar`,
+and only the single-class `.rprBar` rule sets `bottom`:
 
 ```css
 .rprBar { bottom: 52px; }   /* clear of the page's own bottom-right control */
 ```
 
-Class names worth knowing: `.rprBar` (the bottom-right control bar), `.rprPop` (the
-question popover), `.rprCount` (the "3/6" counter), and `body.rprPointing` while
-volunteer mode is on.
+Class names worth knowing: `.rpDock` / `.rprBar` (the dock), `.rprPop` (the box on the
+element), `.rpCount` / `.rprCount` (the `2/6` counter), and `[data-pointing]` on the
+dock root while comment mode is on.
+
+### Theme
+
+Every piece of redpen chrome (`.rpDock`, `.rprPop`, `.rprTip`, `.rpToast`)
+defines its own `--rp-*` tokens and reads none of the host's, so a host variable named
+`--paper` cannot bleed into it. The dock picks light or dark from the page's own
+background luminance, falls back to `prefers-color-scheme`, and writes
+`data-rp-theme="light|dark"` on each of those roots. It re-picks on `load`, on a
+`prefers-color-scheme` change, and whenever `class`, `style` or `data-theme` changes on
+`<html>` or `<body>`, so a host theme toggle needs no call. To recolour it, redefine
+the tokens; a host rule of equal specificity wins by source order:
+
+```css
+.rpDock, .rprPop, .rprTip, .rpToast { --rp-flag: #B4292F; }
+```
+
+Markers and ink never follow the theme. They are marks on the page, not chrome.
 
 ### Sitting above the overlay
 
-Point mode covers the viewport with a capture overlay, so a host control that must stay
-clickable while pointing is on (the toggle that turns review off, typically) needs to
+Comment mode covers the viewport with a capture overlay, so a host control that must
+stay clickable while it is on (the toggle that turns review off, typically) needs to
 outrank it. The layers:
 
 | z-index | layer |
 |---|---|
 | 99990 | `.laInkLayer` finished strokes |
 | 99991 | `.laMarkers` note markers, `.laReqs` request chips |
-| 99992 | `.laOverlay` capture overlay (point mode) |
-| 99993 | `#laNotes` default-UI panel (`dist/redpen.js` only) |
-| 99995 | `.rprBar` |
-| 99996 | `.rprPop` |
+| 99992 | `.laOverlay` capture overlay (comment mode) |
+| 99995 | `.rpDock` the dock |
+| 99996 | `.rprPop` the box on the element |
+| 99997 | `.rprTip` hover tips, `.rpToast` undo toast (the shortcut card is a panel view inside the dock) |
 
 ### Excluding your own chrome
 
@@ -440,18 +529,20 @@ Without it, a click beside your button files a note about your button.
 store.js         v3 blob: notes + strokes per target, one shared id counter, legacy migration
 targets.js       the target registry and the two coordinate bases (getScreenCTM / fractions)
 identify.js      cssPath / describe / resolve / nthOfType
-note-surface.js  capture overlay + markers + rubber-band drag + region/area capture
+note-surface.js  capture overlay + numbered markers + rubber-band drag + region/area capture
 draw-surface.js  ink canvas + lazy brush + smoothing + RDP + SVG path export
 ink-layer.js     finished strokes as SVG marks in one overlay <svg> per viewbox target
 engine.js        Redpen.create → RedpenEngine extends EventTarget
-ui.js            default adapter: hub bar + #laNotes list + global cmd+Z
-review.js        review adapter: request chips + popover + thread + answer/comment copy
+thread.js        the conversation: turns, one request in flight, replies, resolve, sweep
+popover.js       the box on the element: question, comment, thread, leaving is sending
+dock.js          the dock: stylesheet, bar, panels, hover peek, undo toast, theme, keys
+mount.js         composes engine + thread + popover + dock into one adapter
 wire.js          transport: request → clay.wire payload, wire frames → thread calls
-standalone.js    composes engine + ui into one page-wide instance
-index.js         engine + ui     → dist/redpen.js
-index-core.js    engine alone    → dist/redpen-core.js
-index-review.js  engine + review → dist/redpen-review.js
-index-wire.js    the transport   → dist/redpen-wire.js
+standalone.js    one page-wide adapter, plus the NotesTool / DrawTool / FeedbackHub globals
+index.js         engine + dock          → dist/redpen.js
+index-core.js    engine alone           → dist/redpen-core.js
+index-review.js  engine + dock, mount() → dist/redpen-review.js
+index-wire.js    the transport          → dist/redpen-wire.js
 notes.js / draw.js / feedback-hub.js
                  import-and-go entry points kept for the scene pages that symlink them
 ```
@@ -506,8 +597,8 @@ first layout with a real box to normalize against, so nothing is silently discar
 
 ## Build
 
-`dist/redpen.js`, `dist/redpen-core.js` and `dist/redpen-review.js` are checked-in
-IIFE bundles. After editing `src/`:
+`dist/redpen.js`, `dist/redpen-core.js`, `dist/redpen-review.js` and
+`dist/redpen-wire.js` are checked-in IIFE bundles. After editing `src/`:
 
 ```bash
 npm run build
@@ -535,8 +626,40 @@ show-filtering, overshoot binding, resize, persistence and `data()`.
 
 ## JSON shape
 
-`COPY JSON` (and `pen.data()`) group by target, and each target states its own
-coordinate rule:
+`Copy JSON` copies the review projection, `pen.review()`, on every page. One flat
+`items` list, because an answer and a volunteered comment are the same thing to
+whoever reads them, a place on the page plus something the reviewer said about it.
+Ink rides along in `strokes`:
+
+```json
+{
+  "page": "index.html",
+  "answered": 2, "unanswered": 4, "orphaned": 0, "resolved": 1,
+  "coords": "note boxes are fractions of the target element box … stroke paths are integer px in the stated viewBox; …",
+  "viewBox": [0, 0, 1280, 577],
+  "strokes": [
+    { "id": 7, "d": "M 392 612 L 470 640", "bbox": [392, 612, 78, 28], "closed": false, "width": 3 }
+  ],
+  "items": [
+    { "kind": "answer", "ask": "ask-also", "question": "Keep 'also' struck?", "said": "keep it struck",
+      "anchor": { "selector": "span.flag#ask-also", "tag": "span", "text": "also" } },
+    { "kind": "comment", "id": 3, "shape": "element", "said": "wrong verb",
+      "anchor": { "selector": "section.hero > h2", "tag": "h2", "text": "Your break-even rate" } }
+  ]
+}
+```
+
+`viewBox` is the pixel box the stroke paths are in, and `coords` states the rule the
+note boxes are in. A registered target's items and strokes carry `target_id`, and a
+`targets` block states that target's own basis, coordinate rule and viewBox; see
+[Coordinate bases](#coordinate-bases). `Copy comments only` drops `strokes` and that
+`viewBox`; `Copy drawing only` keeps only them.
+
+### `pen.data()`
+
+The other shape, unchanged, because it has live consumers: grouped by target, each
+target stating its own coordinate rule, and notes projected through a fixed field
+whitelist.
 
 ```json
 {

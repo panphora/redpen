@@ -1,7 +1,6 @@
 import { expect } from '@esm-bundle/chai';
-import { mount } from '../src/review.js';
+import { mount } from '../src/mount.js';
 import { attach } from '../src/wire.js';
-import { register, attachNotesPanel } from '../src/ui.js';
 import { SNAPSHOT_REMOVE_SELECTOR, STRIP_FROM_SAVE } from '../../clayjs/src/lib/region-policy.js';
 import {
   SNAPSHOT_REMOVE_SELECTOR as HC_SNAPSHOT_REMOVE,
@@ -110,7 +109,7 @@ it('really did inject marked chrome', () => {
   // The head styles are the ones that carried nothing at all, and destroy()
   // leaves them behind, so their marking is the only thing keeping them out of
   // the file.
-  for (const id of ['rprStyle', 'laSurfaceStyle']) {
+  for (const id of ['rpStyle', 'laSurfaceStyle']) {
     expect(document.getElementById(id).getAttribute('clay')).to.equal('no-save no-snapshot no-watch');
   }
 });
@@ -171,23 +170,19 @@ it('reads point mode off its own bar, not off the authored body', () => {
   expect(document.querySelector('.rprBar').hasAttribute('data-pointing')).to.equal(false);
 });
 
-// Everything above mounts the review adapter alone and without click-through.
-// These are the injection paths that leaves untouched: the generated
-// click-through rule, the standalone UI adapter's bar and notes panel, and the
-// wire transport's pill and stylesheet.
+// Everything above mounts the adapter alone and without click-through. These
+// are the injection paths that leaves untouched: the generated click-through
+// rule, and everything the wire transport lights up in the dock.
 it('keeps the save domain identical with every adapter mounted', () => {
   const before = saveDomain();
 
   window.clay = { wire: { send: () => ({ id: 'x', state: 'sent', done: Promise.resolve({}), cancel() {} }), cancel() {}, on: () => () => {} } };
   review = mount({ key: 'test:everything', clickThrough: 'main p' });
   const wire = attach(review);
-  register({ id: 'notes', label: 'notes', labelOn: 'notes on', getOn: () => false, setOn() {}, clear() {}, getData: () => ({}) });
-  attachNotesPanel(review.pen);
   review.point(true);
 
   expect(document.getElementById('rprClickThrough')).to.not.equal(null);
-  expect(document.getElementById('laPanelStyle')).to.not.equal(null);
-  expect(document.querySelector('.rprWire')).to.not.equal(null);
+  expect(document.querySelector('.rpWire').hidden).to.equal(false);
   expect(saveDomain()).to.equal(before);
 
   wire.detach();

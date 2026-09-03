@@ -1,77 +1,83 @@
-// standalone.js — the default redpen experience, composed from the headless
-// engine plus the default UI adapter. One instance per page, keyed by the page
-// path, mounted on document.body, with the hub bar, the #laNotes panel and the
-// global cmd+Z.
+// standalone.js — the default redpen experience: one adapter per page, keyed by
+// the page path and mounted on document.body, plus the NotesTool / DrawTool /
+// FeedbackHub globals that pages and the homepage-illustration scenes already
+// call.
 //
 // The two tools install independently (a page may load only draw.js), and each
 // install is idempotent, so a second bundle evaluation can't replace the live
-// registry with an empty one.
+// globals with empty ones.
 
-import { create } from './engine.js';
+import { mount } from './mount.js';
 import { CFG } from './draw-surface.js';
-import { register, json, off, tools, syncPills, setDataSource, attachNotesPanel, attachKeys } from './ui.js';
 
 let instance = null;
 
-export function pen() {
-  if (!instance) {
-    // a host whose pages differ only by query string (one page, many subjects)
-    // sets window.REDPEN_KEY before this bundle loads to get its own notes blob
-    instance = create({ key: window.REDPEN_KEY ?? location.pathname, mount: document.body });
-    instance.addEventListener('mode', syncPills);
-    attachKeys(instance);
-    // COPY JSON exports every target; the include-checkboxes drop sections
-    setDataSource(include => {
-      const d = instance.data();
-      for (const g of Object.values(d.targets)) {
-        if (!include.notes) delete g.notes;
-        if (!include.draw) delete g.strokes;
-      }
-      return d;
-    });
-  }
+// One adapter per page. The bundle mounts on load, and a host that then calls
+// Redpen.mount() or RedpenReview.mount() gets that adapter back instead of a
+// second dock over the same storage key.
+export function mountOnce(opts = {}) {
+  // a host whose pages differ only by query string (one page, many subjects)
+  // sets window.REDPEN_KEY before this bundle loads to get its own notes blob
+  if (!instance) instance = mount({ key: window.REDPEN_KEY ?? location.pathname, ...opts });
   return instance;
 }
 
+export function review() {
+  return mountOnce();
+}
+
+export function pen() {
+  return review().pen;
+}
+
+const tool = (id, mode) => ({
+  id,
+  getOn: () => review().pen.mode() === mode,
+  setOn: v => review().mode(v ? mode : null),
+});
+
+// four scene pages under experiments/homepage-illustrations read
+// FeedbackHub.tools.some(t => t.getOn()) to know whether a redpen mode is on
+export const tools = [tool('notes', 'note'), tool('draw', 'draw')];
+
+export function json() {
+  return JSON.stringify(review().json(), null, 2);
+}
+
+export function off() {
+  review().mode(null);
+}
+
+export function register() {
+  console.warn('[redpen] FeedbackHub.register is gone: the dock has a fixed set of tools');
+  return { setOn() {} };
+}
+
 export function installNotes() {
-  if (window.NotesTool) return window.NotesTool;
-  const p = pen();
-  attachNotesPanel(p);
-  const handle = register({
-    id: 'notes',
-    label: 'NOTES',
-    getOn: () => p.mode() === 'note',
-    setOn: v => p.setMode(v ? 'note' : (p.mode() === 'note' ? null : p.mode())),
-    clear: () => p.clearNotes(),
-  });
-  window.NotesTool = {
-    on: v => handle.setOn(v),
-    clear: () => p.clearNotes(),
-    layout: () => p.layout(),
-    items: () => p.items(),
-  };
+  if (!window.NotesTool) {
+    review();
+    window.NotesTool = {
+      on: v => tools[0].setOn(v),
+      clear: () => pen().clearNotes(),
+      layout: () => pen().layout(),
+      items: () => pen().items(),
+    };
+  }
   return window.NotesTool;
 }
 
 export function installDraw() {
-  if (window.DrawTool) return window.DrawTool;
-  const p = pen();
-  const handle = register({
-    id: 'draw',
-    label: 'DRAW',
-    labelOn: 'DRAWING',
-    getOn: () => p.mode() === 'draw',
-    setOn: v => p.setMode(v ? 'draw' : (p.mode() === 'draw' ? null : p.mode())),
-    clear: () => p.clearStrokes(),
-  });
-  window.DrawTool = {
-    cfg: CFG,
-    tune: o => Object.assign(CFG, o),
-    on: v => handle.setOn(v),
-    undo: () => p.undoStroke(),
-    clear: () => p.clearStrokes(),
-  };
-  Object.defineProperty(window.DrawTool, 'strokes', { get: () => p.strokes(), enumerable: true });
+  if (!window.DrawTool) {
+    review();
+    window.DrawTool = {
+      cfg: CFG,
+      tune: o => Object.assign(CFG, o),
+      on: v => tools[1].setOn(v),
+      undo: () => pen().undoStroke(),
+      clear: () => pen().clearStrokes(),
+    };
+    Object.defineProperty(window.DrawTool, 'strokes', { get: () => pen().strokes(), enumerable: true });
+  }
   return window.DrawTool;
 }
 

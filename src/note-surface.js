@@ -30,18 +30,20 @@ const SURFACE_CSS = `
   .laInkLayer { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99990; pointer-events: none; }
   .laMarks { position: absolute; overflow: visible; pointer-events: none; }
   .laBox { position: absolute; border: 2px solid #e5484d; background: rgba(229, 72, 77, .12); box-sizing: border-box; }
-  .laBox.el { background: rgba(229, 72, 77, .06); }
-  .laBox.laPoint { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: #e5484d; border-color: #FDFDFC; }
-  /* The tag carries no number. A marker's job is to say "something was said
-     here", and the id it used to show was only ever useful to whoever was
-     reading the export, which still carries it. Losing the digits also lets the
-     tag be the small round click target that reopens the comment. */
-  .laBox .tag { position: absolute; top: -7px; left: -7px; width: 13px; height: 13px; box-sizing: border-box;
-    background: #e5484d; border: 2px solid #FDFDFC; border-radius: 50%;
-    pointer-events: auto; cursor: pointer; }
-  /* A point marker is already a dot, so it is its own click target rather than
-     wearing a second one. */
-  .laBox.laPoint { pointer-events: auto; cursor: pointer; }
+  .laBox.el { background: transparent; }
+  /* The tag carries its comment's number, which is what the list, the strip and
+     the export all call it. A point marker IS its own tag rather than wearing a
+     second one. */
+  .laBox .tag { position: absolute; top: -9px; left: -9px; min-width: 17px; height: 17px; padding: 0 3px; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; border-radius: 9px;
+    background: #e5484d; color: #FDFDFC; border: 2px solid #FDFDFC;
+    font: 700 10px/13px ui-monospace, "SF Mono", Menlo, monospace; pointer-events: auto; cursor: pointer; }
+  .laBox.laPoint { min-width: 17px; height: 17px; width: auto; padding: 0 3px; margin: -8.5px 0 0 -8.5px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center; background: #e5484d; color: #FDFDFC; border-color: #FDFDFC;
+    font: 700 10px/13px ui-monospace, "SF Mono", Menlo, monospace; pointer-events: auto; cursor: pointer; }
+  .laBox.hot { outline: 2px solid #e5484d; outline-offset: 2px; }
+  .laBox .tag.working, .laBox.laPoint.working { animation: laPulse 1.1s ease-in-out infinite; }
+  @keyframes laPulse { 0%, 100% { opacity: 1 } 50% { opacity: .4 } }
   .laBox .tag:hover, .laBox.laPoint:hover { background: #17110C; }
   .laBox .tag.unread, .laBox.laPoint.unread { box-shadow: 0 0 0 3px rgba(229, 72, 77, .4); }
   .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
@@ -77,14 +79,6 @@ function chrome(el, cls, id) {
   el.className = cls;
   if (id) el.id = id;
   return markChrome(el);
-}
-
-// What a marker says when you hover it, now that it has no number to read. The
-// comment's own words are the only thing that identifies it on the page.
-function markerTitle(note) {
-  const said = (note.text || '').trim();
-  if (!said) return 'an empty comment';
-  return said.length > 72 ? said.slice(0, 71) + '…' : said;
 }
 
 export function createNoteSurface({ mount, targets, store, identify, addNote, afterLayout, visible, requests, onRequestClick, onNoteClick }) {
@@ -189,10 +183,11 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
           const p = screenPoint(t, note);
           if (!p) continue;
           const dot = document.createElement('div');
-          dot.className = 'laBox laPoint' + (note.unread ? ' unread' : '');
+          dot.className = 'laBox laPoint' + (note.unread ? ' unread' : '')
+            + (note.id === hot ? ' hot' : '') + (note.id === working ? ' working' : '');
           dot.dataset.laTarget = id;
           dot.dataset.laNote = note.id;
-          dot.title = markerTitle(note);
+          dot.textContent = String(note.id);
           placePoint(dot, p.x, p.y);
           markers.appendChild(dot);
           continue;
@@ -200,12 +195,12 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
         const r = screenRect(t, note);
         if (!r) continue;
         const box = document.createElement('div');
-        box.className = 'laBox' + (note.kind === 'element' ? ' el' : '');
+        box.className = 'laBox' + (note.kind === 'element' ? ' el' : '') + (note.id === hot ? ' hot' : '');
         box.dataset.laTarget = id;
         box.dataset.laNote = note.id;
         const tag = document.createElement('span');
-        tag.className = 'tag' + (note.unread ? ' unread' : '');
-        tag.title = markerTitle(note);
+        tag.className = 'tag' + (note.unread ? ' unread' : '') + (note.id === working ? ' working' : '');
+        tag.textContent = String(note.id);
         box.appendChild(tag);
         place(box, r);
         markers.appendChild(box);
@@ -216,6 +211,13 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
   }
 
   let openKey = null;
+  let hot = null, working = null;
+
+  // Purely visual, and repainted through the same layout() as everything else:
+  // a list row saying which marker it belongs to, and the marker whose request
+  // is running.
+  function setHot(id) { if (hot === id) return; hot = id; layout(); }
+  function setWorking(id) { if (working === id) return; working = id; layout(); }
 
   function layoutRequests() {
     reqs.textContent = '';
@@ -280,7 +282,7 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
     try { overlay.setPointerCapture(e.pointerId); } catch {}
     const el = topElementAt(e.clientX, e.clientY);
     // the gesture binds to the target under the pointer and never rebinds
-    press = { x: e.clientX, y: e.clientY, el, basis: graphicBasis(el), area: false, target: targets.hitTest(e.clientX, e.clientY) };
+    press = { x: e.clientX, y: e.clientY, el, basis: graphicBasis(el), area: false, shift: !!e.shiftKey, target: targets.hitTest(e.clientX, e.clientY) };
     setHover(null);
   });
 
@@ -337,6 +339,7 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
       el: press.el,
       info: {
         kind, x: press.x, y: press.y, targetId: press.target.id,
+        sticky: press.shift,
         box: r ? { x: r.left, y: r.top, w: r.width, h: r.height } : null,
       },
     };
@@ -511,5 +514,5 @@ export function createNoteSurface({ mount, targets, store, identify, addNote, af
     overlay.remove();
   }
 
-  return { markers, overlay, layout, setActive, setOpenRequest, destroy };
+  return { markers, overlay, layout, setActive, setOpenRequest, setHot, setWorking, destroy };
 }

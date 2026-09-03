@@ -10,7 +10,9 @@ import { chrome } from './mark.js';
 
 export const CFG = {
   width: 3,           // stroke width, px
-  color: '#000',
+  color: '#17110C',
+  halo: '#FDFDFC',    // the wider pass under the ink, so black reads on a dark page
+  haloWidth: 2,       // px added to the stroke width for that pass
   lazyRadius: 4,      // brush trails the pointer by this many px at full speed; the live jitter killer
   minLazyRadius: 1.5, // brush trail when the pointer is moving slowly
   resampleStep: 3,    // finished stroke gets one point per N px of arc length
@@ -149,18 +151,7 @@ export function strokeObj(pts) {
   return { d: toPath(s, closed), bbox, closed };
 }
 
-export function drawStroke(ctx, pts) {
-  ctx.lineWidth = CFG.width;
-  ctx.strokeStyle = CFG.color;
-  ctx.fillStyle = CFG.color;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  if (pts.length === 1) {
-    ctx.beginPath();
-    ctx.arc(pts[0].x, pts[0].y, CFG.width / 2, 0, Math.PI * 2);
-    ctx.fill();
-    return;
-  }
+function tracePath(ctx, pts) {
   ctx.beginPath();
   ctx.moveTo(pts[0].x, pts[0].y);
   for (let i = 1; i < pts.length - 1; i++) {
@@ -170,7 +161,25 @@ export function drawStroke(ctx, pts) {
   }
   const last = pts[pts.length - 1];
   ctx.lineTo(last.x, last.y);
-  ctx.stroke();
+}
+
+export function drawStroke(ctx, pts) {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // the halo first, then the ink over it: black reads on cream and on navy
+  for (const [color, width] of [[CFG.halo, CFG.width + CFG.haloWidth], [CFG.color, CFG.width]]) {
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = width;
+    if (pts.length === 1) {
+      ctx.beginPath();
+      ctx.arc(pts[0].x, pts[0].y, width / 2, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+    tracePath(ctx, pts);
+    ctx.stroke();
+  }
 }
 
 export function createDrawSurface({ mount, targets, store, ink, onStroke, visible }) {
