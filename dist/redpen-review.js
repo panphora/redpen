@@ -2802,7 +2802,7 @@
   .rpDock .rpExport { display: inline-flex; border: 1px solid var(--rp-line2); border-radius: 6px;
     overflow: hidden; margin-left: 2px; }
   .rpDock .rpExport button { border-radius: 0; padding: 5px 9px; color: var(--rp-ink); }
-  .rpDock .rpExport .rpSend + .rpCopy { border-left: 1px solid var(--rp-line); }
+  .rpDock .rpExport .rpSend:not([hidden]) + .rpCopy { border-left: 1px solid var(--rp-line); }
   .rpDock .rpExport button[disabled] { color: var(--rp-faint); cursor: default; }
   .rpDock .rpExport button[disabled]:hover { background: none; color: var(--rp-faint); }
   .rpDock .rpExport.solid { border-color: var(--rp-ink); }
