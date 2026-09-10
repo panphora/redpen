@@ -36,7 +36,7 @@ const tool = (id, mode) => ({
   setOn: v => review().mode(v ? mode : null),
 });
 
-// four scene pages under experiments/homepage-illustrations read
+// four scene pages under ARCHIVE_PROJECTS/experiments/homepage-illustrations read
 // FeedbackHub.tools.some(t => t.getOn()) to know whether a redpen mode is on
 export const tools = [tool('notes', 'note'), tool('draw', 'draw')];
 

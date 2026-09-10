@@ -618,7 +618,7 @@ show-filtering, overshoot binding, resize, persistence and `data()`.
   `body.review` class toggle, and uses every hook in [Host integration](#host-integration):
   the bar moved to clear its own toggle, that toggle at z-index 99993 and marked
   `data-la-ui`, and `clickThrough: 'canvas.beat-video'` for the baked animations.
-- `experiments/homepage-illustrations/` — `notes.js`, `draw.js`, `feedback-hub.js`
+- `ARCHIVE_PROJECTS/experiments/homepage-illustrations/` — `notes.js`, `draw.js`, `feedback-hub.js`
   there are symlinks into this repo's `src/`; scene pages import them as modules
   (notes via the `lineart.js` import, draw via its own script tag).
 - `the-freelance-rate-calculator/index.html` — loads `dist/redpen.js` through a
