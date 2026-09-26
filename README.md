@@ -17,6 +17,52 @@ redpen is a **headless engine** plus **UI adapters**, shipped as four bundles:
   finished comment to an agent over `clay.wire` and brings the reply back. See
   [The thread](#the-thread).
 
+## Comment on a page and have an agent edit it
+
+This section is for using redpen, not building on it. You open an HTML file, click a phrase, write what should change, and send it. An AI agent on your computer edits the file, the page updates in place, and the agent's answer appears under your comment. You can reply to continue.
+
+You need:
+
+- [HTML Clay](https://htmlclay.com), which opens the file and connects it to a program on your computer.
+- An AI agent you can run from the terminal. The example uses [Claude Code](https://claude.com/claude-code): `claude --version` should print a version number.
+- Python 3.
+
+**1. Add redpen to the page.** Put these lines at the end of the file's `<body>`:
+
+```html
+<script src="https://clayjs.com/v1/clay.js?plugins=sync,wire"></script>
+<script src="https://cdn.jsdelivr.net/gh/panphora/redpen@main/dist/redpen-review.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/panphora/redpen@main/dist/redpen-wire.js"></script>
+<script>RedpenReview.mount({});</script>
+```
+
+Keep that order. Save the file with the `.htmlclay` extension.
+
+**2. Get the agent program.** Download [`examples/claude-agent.sh`](examples/claude-agent.sh) and save it next to the page. It hands your comment to Claude Code, prints "thinking" while the agent works, and sends back what it says.
+
+**3. Connect them.** On macOS, make the `htmlclay` command available in this terminal first:
+
+```sh
+alias htmlclay="/Applications/HTMLClay.app/Contents/MacOS/htmlclay"
+```
+
+Then start the connection and leave it running:
+
+```sh
+htmlclay wire serve page.htmlclay -- bash claude-agent.sh
+```
+
+**4. Comment.** Double click `page.htmlclay`. The redpen dock sits in the bottom right corner. Press `C`, click the phrase you want changed, write the change, and click outside the box. The comment sends, the dock's wire dot fills while the agent works, and the page updates when it is done. A small change usually takes fifteen seconds to a minute.
+
+Things to know:
+
+- **The agent runs as you.** It can read and change any file you can, in the folder you started it from. `--permission-mode acceptEdits` in the script lets it edit without asking about each change. Use a stricter mode if you want to approve each one.
+- **Your file goes to the agent's provider**, under your account with them. HTML Clay and redpen send it nowhere.
+- **One comment at a time.** A comment you send while the agent is working waits its turn, and sends when the agent finishes. Keep the page open in one tab only: two tabs can run two agents on the same file, and one edit can overwrite the other.
+- **No agent running?** Comments stay on the page, stored in your browser. **Copy JSON** in the dock copies them all, ready to paste into any agent.
+
+Stop the connection with Ctrl+C. The rest of this README is the reference for building on redpen.
+
 ## What the engine does
 
 - **notes** — click an element to pin a note to it (selector, tag/id/classes, text,
