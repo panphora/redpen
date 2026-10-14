@@ -154,7 +154,7 @@ export function createPopover({ pen, thread, prefs, toast, onChange, anchor, ste
   const leftBtn = el('button', 'rpLeft', '‹ prev');
   const spacer = el('span', 'rprSpacer');
   const hint = el('span', 'rprHint', '⌘↵ done');
-  const rightBtn = el('button', 'rpRight', 'done');
+  const rightBtn = el('button', 'rpRight', 'comment');
   foot.append(leftBtn, spacer, hint, rightBtn);
 
   // The thread scrolls; the composer and the footer sit outside it, so the send
@@ -337,7 +337,7 @@ export function createPopover({ pen, thread, prefs, toast, onChange, anchor, ste
     // the popover, which is the flow this whole tool is built around: tap, type,
     // tap the next thing. A follow-up is explicit, because by then you are in a
     // conversation and pressing Escape must not send.
-    rightBtn.textContent = threaded ? 'send ›' : 'done';
+    rightBtn.textContent = threaded ? 'send ›' : 'comment';
     hint.hidden = false;
     hint.textContent = threaded ? '⌘↵ send' : '⌘↵ done';
     dragged = false;

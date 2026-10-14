@@ -62,7 +62,7 @@ function pressOn(node) {
 function madeComment(words, sel = '#p1') {
   tapComment(sel);
   say(words);
-  footBtn('done').click();
+  footBtn('comment').click();
 }
 
 const markers = () => all('.laMarkers [data-la-note]');
@@ -275,7 +275,7 @@ it('a blank comment is removed on done', async () => {
   review = mount({ key: 'dock:blank', wire: false });
   await loaded();
   tapComment();
-  footBtn('done').click();
+  footBtn('comment').click();
 
   expect(items().length).to.equal(0);
 });

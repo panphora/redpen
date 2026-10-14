@@ -46,7 +46,7 @@ function say(words) {
 function madeComment(words) {
   tapComment();
   say(words);
-  footBtn('done').click();
+  footBtn('comment').click();
   review.point(false);
 }
 
@@ -168,7 +168,7 @@ it('reopening a comment and closing it unchanged says nothing', () => {
   expect(seen.length).to.equal(1);
 
   clickMarker();
-  footBtn('done').click();
+  footBtn('comment').click();
 
   expect(seen.length).to.equal(1);
 });
@@ -181,7 +181,7 @@ it('reopening a comment that was never sent, and editing it, does announce', () 
   madeComment('first thought');
   clickMarker();
   say('second thought');
-  footBtn('done').click();
+  footBtn('comment').click();
 
   expect(seen.length).to.equal(2);
   expect(seen[1].said).to.equal('second thought');

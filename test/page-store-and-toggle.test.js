@@ -53,7 +53,7 @@ function key(name, opts = {}, target = window) {
 function madeComment(words, sel = '#p1') {
   tapComment(sel);
   say(words);
-  footBtn('done').click();
+  footBtn('comment').click();
 }
 
 const loaded = () => new Promise(resolve => {

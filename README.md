@@ -217,7 +217,7 @@ Hovering a marker or a list row shows what it says without opening it.
 | `C` | comment mode on / off |
 | `D` | draw mode on / off |
 | `Esc` | back out one step |
-| `⌘↵` | done, or send a follow-up |
+| `⌘↵` | comment, or send a follow-up |
 | `⌘Z` | undo the last stroke, in draw mode |
 | `N` | next unanswered question, when the page asks any |
 | `?` | the shortcut card |

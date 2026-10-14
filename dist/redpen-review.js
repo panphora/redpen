@@ -2321,7 +2321,7 @@
     const leftBtn = el("button", "rpLeft", "\u2039 prev");
     const spacer = el("span", "rprSpacer");
     const hint = el("span", "rprHint", "\u2318\u21B5 done");
-    const rightBtn = el("button", "rpRight", "done");
+    const rightBtn = el("button", "rpRight", "comment");
     foot.append(leftBtn, spacer, hint, rightBtn);
     pop.append(top, menu, was, question, threadBox, field, foot);
     document.body.appendChild(pop);
@@ -2453,7 +2453,7 @@
       field.placeholder = threaded ? "reply to the agent\u2026" : "what's wrong here";
       field.value = opened = (threaded ? item.draft : item.text) || "";
       leftBtn.hidden = true;
-      rightBtn.textContent = threaded ? "send \u203A" : "done";
+      rightBtn.textContent = threaded ? "send \u203A" : "comment";
       hint.hidden = false;
       hint.textContent = threaded ? "\u2318\u21B5 send" : "\u2318\u21B5 done";
       dragged = false;

@@ -153,7 +153,7 @@ it('announces a finished comment once, with the projection its geometry needs', 
 
   tapComment();
   say('this paragraph should say more');
-  footBtn('done').click();
+  footBtn('comment').click();
 
   expect(seen.length).to.equal(1);
   expect(seen[0].item.kind).to.equal('comment');
@@ -167,7 +167,7 @@ it('says nothing about a comment with no words in it', () => {
   review.onComment(item => seen.push(item));
 
   tapComment();
-  footBtn('done').click();
+  footBtn('comment').click();
 
   expect(seen.length).to.equal(0);
 });
@@ -193,7 +193,7 @@ it('sends the region key the merge will place the answer by', async () => {
 
   tapComment();
   say('rewrite this paragraph');
-  footBtn('done').click();
+  footBtn('comment').click();
 
   expect(wire.sent.length).to.equal(1);
   const { payload, opts } = wire.sent[0];
@@ -213,7 +213,7 @@ it('degrades to the clipboard when the page has no wire', () => {
 
   tapComment();
   say('still just a note');
-  expect(() => footBtn('done').click()).to.not.throw();
+  expect(() => footBtn('comment').click()).to.not.throw();
 });
 
 it('shows what the agent is doing, and cancels it', async () => {
@@ -225,7 +225,7 @@ it('shows what the agent is doing, and cancels it', async () => {
 
   tapComment();
   say('do the thing');
-  footBtn('done').click();
+  footBtn('comment').click();
   const id = only(wire);
 
   const noteId = review.json().items.find(i => i.kind === 'comment').id;
@@ -278,7 +278,7 @@ it('announces a comment left open when the next one is started', () => {
   expect(seen[0].said).to.equal('the first thing');
 
   say('the second thing');
-  footBtn('done').click();
+  footBtn('comment').click();
   expect(seen.map(i => i.said)).to.deep.equal(['the first thing', 'the second thing']);
 });
 
@@ -304,7 +304,7 @@ it('says nothing about a comment that is only whitespace', () => {
 
   tapComment();
   say('   \n  ');
-  footBtn('done').click();
+  footBtn('comment').click();
 
   expect(seen.length).to.equal(0);
 });
@@ -323,7 +323,7 @@ it('gives a registered-target region the key of the card it sits in', async () =
 
   dragAcross('.art');
   say('make this line thicker');
-  footBtn('done').click();
+  footBtn('comment').click();
 
   const { payload } = wire.sent[0];
   expect(payload.item.shape).to.equal('region');
@@ -350,7 +350,7 @@ it('keeps every comment listener separate', async () => {
 
   tapComment();
   say('while attached');
-  footBtn('done').click();
+  footBtn('comment').click();
   expect(fromMount.length).to.equal(1);
   expect(wire.sent.length).to.equal(1);
 
@@ -364,7 +364,7 @@ it('keeps every comment listener separate', async () => {
 
   tapComment();
   say('after detaching');
-  footBtn('done').click();
+  footBtn('comment').click();
   // The page's own listener is untouched; only the transport went away.
   expect(fromMount.length).to.equal(2);
   expect(wire.sent.length).to.equal(1);
@@ -393,7 +393,7 @@ it('holds a detach until the request in flight ends', async () => {
 
   tapComment();
   say('rewrite the intro');
-  footBtn('done').click();
+  footBtn('comment').click();
   const id = only(wire);
 
   link.detach();
@@ -403,7 +403,7 @@ it('holds a detach until the request in flight ends', async () => {
   // already on its way out.
   tapComment();
   say('and the heading');
-  footBtn('done').click();
+  footBtn('comment').click();
   expect(wire.sent.length).to.equal(1);
 
   await wire.finish(id, 'done');
@@ -421,7 +421,7 @@ it('redraws only the turn that changed, and keeps an open trail open', async () 
 
   tapComment();
   say('make this shorter');
-  footBtn('done').click();
+  footBtn('comment').click();
   const noteId = review.json().items.find(i => i.kind === 'comment').id;
   await wire.finish(only(wire), 'done');
 
@@ -489,7 +489,7 @@ it('turns status lines into a turn’s progress and its reply', async () => {
 
   tapComment();
   say('make this shorter');
-  footBtn('done').click();
+  footBtn('comment').click();
   const id = only(wire);
 
   wire.status(id, 'reading index.htmlclay');
@@ -513,7 +513,7 @@ it('keeps a mangled reply and says what happened to it', async () => {
 
   tapComment();
   say('make this shorter');
-  footBtn('done').click();
+  footBtn('comment').click();
   const id = only(wire);
   wire.status(id, '{"redpen":1,"reply":"Cut the seco');
 
@@ -533,7 +533,7 @@ it('ignores a frame for a request it never sent', async () => {
 
   tapComment();
   say('make this shorter');
-  footBtn('done').click();
+  footBtn('comment').click();
   wire.status('someone-elses-request', 'not ours');
 
   const noteId = review.json().items.find(i => i.kind === 'comment').id;
@@ -551,7 +551,7 @@ it('adds nothing to turn one’s payload, and carries the exchanges on turn two'
 
   tapComment();
   say('make this shorter');
-  footBtn('done').click();
+  footBtn('comment').click();
   const first = only(wire);
   expect(wire.sent[0].payload.turn).to.equal(undefined);
   expect(wire.sent[0].payload.thread).to.equal(undefined);
