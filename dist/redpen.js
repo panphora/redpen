@@ -3261,9 +3261,10 @@
     }
     function shouldAnnounce(at, note) {
       if (note.thread && note.thread.length) return false;
-      return note.text !== at.textAtOpen;
+      return note.text !== at.textAtOpen || drafted.has(at.id) || thread.connected();
     }
-    function leaveOpen() {
+    const drafted = /* @__PURE__ */ new Set();
+    function leaveOpen({ send = false } = {}) {
       const at = open;
       flush();
       open = null;
@@ -3276,8 +3277,12 @@
         pen2.remove(at.id);
         return;
       }
-      if (prefs.hold()) return;
+      if (!send || prefs.hold()) {
+        drafted.add(at.id);
+        return;
+      }
       if (shouldAnnounce(at, note)) thread.announce(at.id);
+      drafted.delete(at.id);
     }
     function cancelOpen() {
       const at = open;
@@ -3303,8 +3308,8 @@
       else pen2.setNote(at.id, at.textAtOpen);
       hide();
     }
-    function leave() {
-      leaveOpen();
+    function leave(opts) {
+      leaveOpen(opts);
       hide();
     }
     function cancel() {
@@ -3314,7 +3319,7 @@
       if (!open) return;
       if (open.kind === "ask") return step(1);
       if (open.kind === "comment" && open.threaded) return sendFollowUp();
-      leave();
+      leave({ send: true });
     }
     function sendFollowUp() {
       if (!open || open.kind !== "comment" || !open.threaded) return;

@@ -184,7 +184,7 @@ it('done sends once, and reopening does not send again', async () => {
   expect(wire.sent.length).to.equal(1);
 });
 
-it('clicking away sends once, and the page still gets the click', async () => {
+it('clicking away keeps a draft, the page still gets the click, and Send ships it', async () => {
   review = mount({ key: 'dock:away', wire: false });
   await loaded();
   const wire = fakeTransport();
@@ -199,8 +199,11 @@ it('clicking away sends once, and the page still gets the click', async () => {
   pressOn(p);
 
   expect(pop().hidden).to.equal(true);
-  expect(wire.sent.length).to.equal(1);
+  expect(wire.sent.length).to.equal(0);
   expect(sawIt).to.equal(true);
+
+  sendBtn().click();
+  expect(wire.sent.length).to.equal(1);
 });
 
 it('a click on a control keeps the box open', async () => {

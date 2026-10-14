@@ -383,19 +383,24 @@ export function createPopover({ pen, thread, prefs, toast, onChange, anchor, ste
 
   // ---------- the ways out ----------
 
-  // A comment is announced when it is finished for the first time, and never
-  // again. Every way out but Escape runs this, and comments became reopenable
-  // the moment marker tags took clicks, so without the guard opening a thread to
-  // read the agent's reply and closing it would send the same comment again and
-  // cost a second edit to the file. Once a thread exists the first message is
-  // already gone and the comment text is frozen, which is what makes the thread
-  // check sufficient on its own.
+  // A comment is announced when it is sent for the first time, and never again.
+  // Comments are reopenable, so without the guard pressing the button on one that
+  // already went out would send it again and cost a second edit to the file. Once
+  // a thread exists the first message is already gone and the comment text is
+  // frozen, which is what makes the thread check sufficient on its own. A draft
+  // left behind earlier, or any threadless comment while the wire is up, has
+  // never gone out, so it sends even when this visit changed nothing.
   function shouldAnnounce(at, note) {
     if (note.thread && note.thread.length) return false;
-    return note.text !== at.textAtOpen;
+    return note.text !== at.textAtOpen || drafted.has(at.id) || thread.connected();
   }
 
-  function leaveOpen() {
+  // Only the comment button and ⌘↵ send a first message. Clicking away, starting
+  // the next comment or opening a question leaves it as a draft in the field,
+  // and the dock's Send ships every draft at once.
+  const drafted = new Set();
+
+  function leaveOpen({ send = false } = {}) {
     const at = open;
     flush();
     open = null;
@@ -405,8 +410,9 @@ export function createPopover({ pen, thread, prefs, toast, onChange, anchor, ste
     if (!note) return;
     const threaded = !!(note.thread && note.thread.length);
     if (!threaded && !String(note.text || '').trim()) { pen.remove(at.id); return; }
-    if (prefs.hold()) return;
+    if (!send || prefs.hold()) { drafted.add(at.id); return; }
     if (shouldAnnounce(at, note)) thread.announce(at.id);
+    drafted.delete(at.id);
   }
 
   // Escape only: put back what this visit changed, send nothing.
@@ -430,14 +436,14 @@ export function createPopover({ pen, thread, prefs, toast, onChange, anchor, ste
     hide();
   }
 
-  function leave() { leaveOpen(); hide(); }
+  function leave(opts) { leaveOpen(opts); hide(); }
   function cancel() { cancelOpen(); }
 
   function finish() {
     if (!open) return;
     if (open.kind === 'ask') return step(1);
     if (open.kind === 'comment' && open.threaded) return sendFollowUp();
-    leave();
+    leave({ send: true });
   }
 
   function sendFollowUp() {

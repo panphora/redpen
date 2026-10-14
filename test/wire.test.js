@@ -261,11 +261,9 @@ it('carries a registered target basis instead of the page coords', () => {
   expect(payload.coords).to.equal(undefined);
 });
 
-// Every way out of an open comment announces it, not just the done button. Point
-// mode stays on while the popover is open, so a second tap is an ordinary
-// gesture, and before this the first comment was persisted and never sent, with
-// no way back to its own done button.
-it('announces a comment left open when the next one is started', () => {
+// Only the comment button sends a first message. Every other way out leaves it
+// as a draft, kept in the note, and the dock's Send ships it later.
+it('keeps a comment left open as a draft when the next one is started', () => {
   review = mount({ key: 'test:replaced' });
   const seen = [];
   review.onComment(item => seen.push(item));
@@ -274,15 +272,15 @@ it('announces a comment left open when the next one is started', () => {
   say('the first thing');
   tapComment();
 
-  expect(seen.length).to.equal(1);
-  expect(seen[0].said).to.equal('the first thing');
+  expect(seen.length).to.equal(0);
+  expect(review.json().items.filter(i => i.kind === 'comment').map(i => i.said)).to.include('the first thing');
 
   say('the second thing');
   footBtn('comment').click();
-  expect(seen.map(i => i.said)).to.deep.equal(['the first thing', 'the second thing']);
+  expect(seen.map(i => i.said)).to.deep.equal(['the second thing']);
 });
 
-it('announces a comment left open when a question is opened', () => {
+it('keeps a comment left open as a draft when a question is opened', () => {
   document.querySelector('main p').setAttribute('data-review-ask', 'Is this right?');
   document.querySelector('main p').id = 'ask-p';
   review = mount({ key: 'test:to-question' });
@@ -294,7 +292,27 @@ it('announces a comment left open when a question is opened', () => {
   say('said before switching');
   review.open('ask-p');
 
-  expect(seen.map(i => i.said)).to.deep.equal(['said before switching']);
+  expect(seen.length).to.equal(0);
+});
+
+it('keeps a comment as a draft on a click outside it, and sends it from its own button', () => {
+  review = mount({ key: 'test:click-away' });
+  const seen = [];
+  review.onComment(item => seen.push(item));
+
+  tapComment();
+  say('remove "');
+  review.point(false);
+  document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+
+  expect(seen.length).to.equal(0);
+  expect(document.querySelector('.rprPop').hidden).to.equal(true);
+
+  document.querySelector('.laMarkers [data-la-note]').click();
+  expect(document.querySelector('.rprPop textarea').value).to.equal('remove "');
+  footBtn('comment').click();
+
+  expect(seen.map(i => i.said)).to.deep.equal(['remove "']);
 });
 
 it('says nothing about a comment that is only whitespace', () => {
