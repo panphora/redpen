@@ -98,3 +98,42 @@ export function createBackend({ key, storage }) {
     },
   };
 }
+
+// The page itself, for hosts that save the document. The blob lives as JSON text
+// in <script type="application/json" id="redpen-data">, so the file carries its
+// own review and anything that reads the file reads the comments too.
+export const PAGE_BLOCK_ID = 'redpen-data';
+
+export function findPageBlock(doc = document) {
+  const node = doc.getElementById(PAGE_BLOCK_ID);
+  return node && node.tagName === 'SCRIPT' && /json/i.test(node.type) ? node : null;
+}
+
+// `<` is escaped so a comment that says </script> cannot end the block early
+const blockText = blob => JSON.stringify(blob).replace(/</g, '\\u003c');
+
+async function saveThroughClay() {
+  const clay = window.clay;
+  if (!clay) return;
+  if (clay.ready && typeof clay.ready.then === 'function') await clay.ready.catch(() => {});
+  if (typeof clay.save === 'function') await clay.save();
+}
+
+export function createPageBackend({ doc = document, save = saveThroughClay } = {}) {
+  // looked up on every call: a live-sync apply from disk may swap the element
+  const block = () => findPageBlock(doc);
+  return {
+    async read() {
+      const text = block()?.textContent.trim() || '';
+      return text ? JSON.parse(text) : null;
+    },
+    async write(blob) {
+      const node = block();
+      if (!node) throw new Error('redpen: the #redpen-data block is gone from the page');
+      const text = blockText(blob);
+      if (node.textContent === text) return;
+      node.textContent = text;
+      await save();
+    },
+  };
+}

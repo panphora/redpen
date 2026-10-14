@@ -212,14 +212,44 @@
       }
     };
   }
+  var PAGE_BLOCK_ID = "redpen-data";
+  function findPageBlock(doc = document) {
+    const node = doc.getElementById(PAGE_BLOCK_ID);
+    return node && node.tagName === "SCRIPT" && /json/i.test(node.type) ? node : null;
+  }
+  var blockText = (blob) => JSON.stringify(blob).replace(/</g, "\\u003c");
+  async function saveThroughClay() {
+    const clay = window.clay;
+    if (!clay) return;
+    if (clay.ready && typeof clay.ready.then === "function") await clay.ready.catch(() => {
+    });
+    if (typeof clay.save === "function") await clay.save();
+  }
+  function createPageBackend({ doc = document, save = saveThroughClay } = {}) {
+    const block = () => findPageBlock(doc);
+    return {
+      async read() {
+        const text = block()?.textContent.trim() || "";
+        return text ? JSON.parse(text) : null;
+      },
+      async write(blob) {
+        const node = block();
+        if (!node) throw new Error("redpen: the #redpen-data block is gone from the page");
+        const text = blockText(blob);
+        if (node.textContent === text) return;
+        node.textContent = text;
+        await save();
+      }
+    };
+  }
 
   // src/store.js
   var r1 = (n) => Math.round(n * 10) / 10;
   var r4 = (n) => Math.round(n * 1e4) / 1e4;
-  function createStore({ key, storage, onLoad, onSaveError }) {
+  function createStore({ key, storage, backend: given, onLoad, onSaveError }) {
     const legacyNotesKey = "la-notes:" + key;
     const legacyDrawKey = "la-draw:" + key;
-    const backend = createBackend({ key, storage });
+    const backend = given ?? createBackend({ key, storage });
     const state = { counter: 0, targets: /* @__PURE__ */ new Map(), answers: /* @__PURE__ */ Object.create(null) };
     const clearedBeforeLoad = /* @__PURE__ */ new Set();
     function group(id) {
@@ -1335,6 +1365,7 @@
     const store = createStore({
       key,
       storage,
+      backend: opts.backend,
       onLoad: ({ migrated }) => {
         if (destroyed) return;
         loaded = true;
@@ -3185,7 +3216,7 @@
     style.textContent = CSS2;
     document.head.prepend(style);
   }
-  function createDock({ pen: pen2, thread, popover, prefs, tools: tools2, attr, clickThrough, keys, mountNode, step }) {
+  function createDock({ pen: pen2, thread, popover, prefs, tools: tools2, attr, clickThrough, keys, active = () => true, mountNode, step }) {
     injectStyles();
     let view = null;
     let current = null;
@@ -3752,6 +3783,7 @@
     markerLayer?.addEventListener("mouseover", onMarkerHover);
     markerLayer?.addEventListener("mouseout", hideTip);
     function onKey(e) {
+      if (!active()) return;
       const typing = isTyping(e.target) || isTyping(document.activeElement);
       if (e.key === "Escape") {
         if (view) return setView(null);
@@ -3869,7 +3901,13 @@
     const attr = opts.attr || "data-review-ask";
     const tools2 = new Set(opts.tools || ["comment", "draw"]);
     const mountNode = opts.mount ?? document.body;
-    const pen2 = create({ key, mount: mountNode });
+    const backend = opts.backend ?? (findPageBlock() ? createPageBackend() : void 0);
+    const pen2 = create({ key, mount: mountNode, backend });
+    let visible = !opts.hidden;
+    const hideRule = mark(document.createElement("style"));
+    hideRule.textContent = "[data-la-ui]{display:none!important}";
+    const applyVisibility = () => visible ? hideRule.remove() : document.head.appendChild(hideRule);
+    applyVisibility();
     const listeners = /* @__PURE__ */ new Set();
     if (typeof opts.onComment === "function") listeners.add(opts.onComment);
     const holdKey = "redpen:hold:" + key;
@@ -3909,7 +3947,8 @@
       mountNode,
       step,
       clickThrough: opts.clickThrough || "",
-      keys: opts.keys !== false
+      keys: opts.keys !== false,
+      active: () => visible
     });
     thread.setOpener((id) => {
       const note = pen2.items().find((n) => n.id === id);
@@ -3975,6 +4014,39 @@
         if (live) pen2.layout();
       });
     }
+    function show() {
+      if (visible) return;
+      visible = true;
+      applyVisibility();
+      if (tools2.has("comment")) dock.setMode("note");
+    }
+    function hide() {
+      if (!visible) return;
+      popover.leave();
+      dock.setView(null);
+      dock.setMode(null);
+      visible = false;
+      applyVisibility();
+    }
+    const sequence = opts.toggle === void 0 ? ";;" : opts.toggle;
+    const editable = (n) => !!n && n.nodeType === 1 && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName));
+    let typed = "";
+    let typedAt = 0;
+    function onToggleKey(e) {
+      if (!sequence || e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
+      if (editable(e.target) || editable(document.activeElement)) {
+        typed = "";
+        return;
+      }
+      typed = (e.timeStamp - typedAt > 600 ? "" : typed) + e.key;
+      typedAt = e.timeStamp;
+      if (!sequence.startsWith(typed)) typed = sequence.startsWith(e.key) ? e.key : "";
+      if (typed !== sequence) return;
+      typed = "";
+      e.preventDefault();
+      visible ? hide() : show();
+    }
+    if (opts.keys !== false) window.addEventListener("keydown", onToggleKey);
     const adapter = {
       pen: pen2,
       refresh,
@@ -3991,6 +4063,12 @@
       json: () => dock.exportObject("all"),
       send: () => thread.sendPending(),
       thread,
+      show,
+      hide,
+      toggle: () => visible ? hide() : show(),
+      get visible() {
+        return visible;
+      },
       // Registered after the fact so a transport can be a separate bundle that
       // attaches to this object, rather than something mount() has to be told
       // about before it runs. Returns its own unsubscribe: a caller may only ever
@@ -4008,6 +4086,8 @@
         dock.destroy();
         popover.destroy();
         pen2.destroy();
+        window.removeEventListener("keydown", onToggleKey);
+        hideRule.remove();
       }
     };
     function attachWire(wire) {
@@ -4030,7 +4110,7 @@
   // src/standalone.js
   var instance = null;
   function mountOnce(opts = {}) {
-    if (!instance) instance = mount({ key: window.REDPEN_KEY ?? location.pathname, ...opts });
+    if (!instance) instance = mount({ key: window.REDPEN_KEY ?? location.pathname, ...window.REDPEN_OPTIONS || {}, ...opts });
     return instance;
   }
   function review() {

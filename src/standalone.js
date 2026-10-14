@@ -18,7 +18,8 @@ let instance = null;
 export function mountOnce(opts = {}) {
   // a host whose pages differ only by query string (one page, many subjects)
   // sets window.REDPEN_KEY before this bundle loads to get its own notes blob
-  if (!instance) instance = mount({ key: window.REDPEN_KEY ?? location.pathname, ...opts });
+  // and window.REDPEN_OPTIONS (e.g. { hidden: true }) for any other mount option
+  if (!instance) instance = mount({ key: window.REDPEN_KEY ?? location.pathname, ...(window.REDPEN_OPTIONS || {}), ...opts });
   return instance;
 }
 

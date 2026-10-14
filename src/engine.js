@@ -36,7 +36,7 @@ export function create(opts = {}) {
   let loaded = false;
 
   const store = createStore({
-    key, storage,
+    key, storage, backend: opts.backend,
     onLoad: ({ migrated }) => {
       if (destroyed) return;
       loaded = true;

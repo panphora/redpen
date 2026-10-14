@@ -216,10 +216,10 @@
   // src/store.js
   var r1 = (n) => Math.round(n * 10) / 10;
   var r4 = (n) => Math.round(n * 1e4) / 1e4;
-  function createStore({ key, storage, onLoad, onSaveError }) {
+  function createStore({ key, storage, backend: given, onLoad, onSaveError }) {
     const legacyNotesKey = "la-notes:" + key;
     const legacyDrawKey = "la-draw:" + key;
-    const backend = createBackend({ key, storage });
+    const backend = given ?? createBackend({ key, storage });
     const state = { counter: 0, targets: /* @__PURE__ */ new Map(), answers: /* @__PURE__ */ Object.create(null) };
     const clearedBeforeLoad = /* @__PURE__ */ new Set();
     function group(id) {
@@ -1335,6 +1335,7 @@
     const store = createStore({
       key,
       storage,
+      backend: opts.backend,
       onLoad: ({ migrated }) => {
         if (destroyed) return;
         loaded = true;

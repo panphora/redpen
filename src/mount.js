@@ -19,6 +19,8 @@ import { createThread } from './thread.js';
 import { createPopover } from './popover.js';
 import { createDock } from './dock.js';
 import { attach } from './wire.js';
+import { mark } from './mark.js';
+import { createPageBackend, findPageBlock } from './backend.js';
 
 export function mount(opts = {}) {
   const key = opts.key ?? location.pathname;
@@ -26,7 +28,16 @@ export function mount(opts = {}) {
   const tools = new Set(opts.tools || ['comment', 'draw']);
   const mountNode = opts.mount ?? document.body;
 
-  const pen = create({ key, mount: mountNode });
+  const backend = opts.backend ?? (findPageBlock() ? createPageBackend() : undefined);
+  const pen = create({ key, mount: mountNode, backend });
+
+  // Hidden is one stylesheet over every node chrome() made, rather than a flag
+  // each surface has to honor.
+  let visible = !opts.hidden;
+  const hideRule = mark(document.createElement('style'));
+  hideRule.textContent = '[data-la-ui]{display:none!important}';
+  const applyVisibility = () => (visible ? hideRule.remove() : document.head.appendChild(hideRule));
+  applyVisibility();
 
   // A Set, not one slot. mount() can be given a listener and a transport bundle
   // can add its own later, and two attachments must not silently replace each
@@ -58,6 +69,7 @@ export function mount(opts = {}) {
     pen, thread, popover, prefs, tools, attr, mountNode, step,
     clickThrough: opts.clickThrough || '',
     keys: opts.keys !== false,
+    active: () => visible,
   });
 
   thread.setOpener(id => {
@@ -142,6 +154,41 @@ export function mount(opts = {}) {
     document.fonts.ready.then(() => { if (live) pen.layout(); });
   }
 
+  function show() {
+    if (visible) return;
+    visible = true;
+    applyVisibility();
+    if (tools.has('comment')) dock.setMode('note');
+  }
+
+  function hide() {
+    if (!visible) return;
+    popover.leave();
+    dock.setView(null);
+    dock.setMode(null);
+    visible = false;
+    applyVisibility();
+  }
+
+  // A typed sequence, not a modifier chord: every Cmd/Ctrl/Alt chord on David's
+  // Chrome already belongs to the browser or an extension.
+  const sequence = opts.toggle === undefined ? ';;' : opts.toggle;
+  const editable = n => !!n && n.nodeType === 1 && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName));
+  let typed = '';
+  let typedAt = 0;
+  function onToggleKey(e) {
+    if (!sequence || e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
+    if (editable(e.target) || editable(document.activeElement)) { typed = ''; return; }
+    typed = (e.timeStamp - typedAt > 600 ? '' : typed) + e.key;
+    typedAt = e.timeStamp;
+    if (!sequence.startsWith(typed)) typed = sequence.startsWith(e.key) ? e.key : '';
+    if (typed !== sequence) return;
+    typed = '';
+    e.preventDefault();
+    visible ? hide() : show();
+  }
+  if (opts.keys !== false) window.addEventListener('keydown', onToggleKey);
+
   const adapter = {
     pen,
     refresh,
@@ -158,6 +205,10 @@ export function mount(opts = {}) {
     json: () => dock.exportObject('all'),
     send: () => thread.sendPending(),
     thread,
+    show,
+    hide,
+    toggle: () => (visible ? hide() : show()),
+    get visible() { return visible; },
     // Registered after the fact so a transport can be a separate bundle that
     // attaches to this object, rather than something mount() has to be told
     // about before it runs. Returns its own unsubscribe: a caller may only ever
@@ -174,6 +225,8 @@ export function mount(opts = {}) {
       dock.destroy();
       popover.destroy();
       pen.destroy();
+      window.removeEventListener('keydown', onToggleKey);
+      hideRule.remove();
     },
   };
 

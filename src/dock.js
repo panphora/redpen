@@ -347,7 +347,7 @@ function injectStyles() {
   document.head.prepend(style);
 }
 
-export function createDock({ pen, thread, popover, prefs, tools, attr, clickThrough, keys, mountNode, step }) {
+export function createDock({ pen, thread, popover, prefs, tools, attr, clickThrough, keys, active = () => true, mountNode, step }) {
   injectStyles();
 
   let view = null;         // null | 'list' | 'resolved' | 'orphans' | 'menu' | 'shortcuts'
@@ -969,6 +969,7 @@ export function createDock({ pen, thread, popover, prefs, tools, attr, clickThro
   // ---------- the keyboard ----------
 
   function onKey(e) {
+    if (!active()) return;
     const typing = isTyping(e.target) || isTyping(document.activeElement);
     if (e.key === 'Escape') {
       if (view) return setView(null);

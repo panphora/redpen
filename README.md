@@ -475,6 +475,10 @@ review.json()      // the same payload, as an object
 review.send()      // send every held comment, returns how many started
 review.thread      // the conversation on a comment; see The thread
 review.onComment(fn)  // called with each finished comment; returns its own unsubscribe
+review.show()      // unhide every redpen node and enter comment mode
+review.hide()      // hide everything and end the mode
+review.toggle()    // show or hide, whichever the current state is
+review.visible     // whether redpen is currently shown
 review.destroy()
 ```
 
@@ -486,7 +490,8 @@ exactly where the last one left off. Call `refresh()` rather than remounting whe
 the questions changed.
 
 On `dist/redpen.js` both aliases return the page's one adapter, which the bundle mounts
-on load; pass options through `window.REDPEN_KEY` or call `Redpen.create` for a second
+on load; pass options through `window.REDPEN_KEY` and `window.REDPEN_OPTIONS` (an object of
+mount options, set before the bundle loads), or call `Redpen.create` for a second
 engine.
 
 ### Mount options
@@ -501,6 +506,9 @@ engine.
 | `clickThrough` | none | a selector for artwork that stays clickable under the capture overlay |
 | `wire` | auto | the transport; see below |
 | `onComment` | none | a first listener, the same thing `onComment(fn)` adds |
+| `hidden` | `false` | start with every redpen node hidden; only the toggle works until it is shown |
+| `toggle` | `';;'` | the characters to type, outside any field, to show or hide redpen (`false` turns it off). Showing it starts comment mode |
+| `backend` | auto | where the blob lives; a page with `<script type="application/json" id="redpen-data">` keeps it there and saves through `clay.save()`, otherwise IndexedDB |
 
 ### The transport
 

@@ -27,10 +27,10 @@ import { createBackend } from './backend.js';
 const r1 = n => Math.round(n * 10) / 10;
 const r4 = n => Math.round(n * 10000) / 10000;
 
-export function createStore({ key, storage, onLoad, onSaveError }) {
+export function createStore({ key, storage, backend: given, onLoad, onSaveError }) {
   const legacyNotesKey = 'la-notes:' + key;
   const legacyDrawKey = 'la-draw:' + key;
-  const backend = createBackend({ key, storage });
+  const backend = given ?? createBackend({ key, storage });
 
   // null-prototype: an answer is keyed by an element id the page chose, and on a
   // plain object an id of `constructor` or `toString` reads back as an inherited
