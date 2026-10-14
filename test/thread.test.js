@@ -20,7 +20,7 @@ const footBtn = label =>
   [...pop().querySelectorAll('.rprFoot button')].find(b => b.textContent.startsWith(label));
 
 const topBtn = label =>
-  [...pop().querySelectorAll('.rprTop button')].find(b => b.textContent === label);
+  [...pop().querySelectorAll('.rprTop button')].find(b => b.getAttribute('aria-label') === label);
 
 function tapComment() {
   review.point(true);
@@ -206,7 +206,7 @@ it('a comment that already has a thread never announces again', () => {
   // leaving is the gesture that used to announce
   clickMarker();
   say('shorten this a lot');
-  topBtn('×').click();
+  topBtn('Close').click();
 
   expect(seen.length).to.equal(1);
 });
@@ -597,7 +597,7 @@ it('keeps an unsent follow-up as a draft, and never as the comment', async () =>
   const id = onlyNote().id;
   clickMarker();
   say('half a thought');
-  topBtn('×').click();
+  topBtn('Close').click();
 
   expect(review.pen.items().find(n => n.id === id).draft).to.equal('half a thought');
   expect(onlyNote().said).to.equal('make this shorter');

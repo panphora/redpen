@@ -12,6 +12,7 @@
 import { chrome } from './mark.js';
 import { tailRect } from './note-surface.js';
 import { RUNNING } from './thread.js';
+import { bevelIcon } from '@panphora/bevel/icons';
 
 export const CANCELLABLE = new Set(['sent', 'acked']);
 
@@ -116,10 +117,14 @@ export function createPopover({ pen, thread, prefs, toast, onChange, anchor, ste
   pop.dataset.rpTheme = 'light';
 
   const eyebrow = el('span', 'rprEyebrow');
-  const moreBtn = el('button', 'rprX rpPopMore', '⋯');
+  const moreBtn = el('button', 'rprX rpPopMore');
+  moreBtn.innerHTML = bevelIcon('more', { size: 16 });
   moreBtn.title = 'More';
-  const closeBtn = el('button', 'rprX rpPopClose', '×');
+  moreBtn.setAttribute('aria-label', 'More');
+  const closeBtn = el('button', 'rprX rpPopClose');
+  closeBtn.innerHTML = bevelIcon('close', { size: 16 });
   closeBtn.title = 'Close';
+  closeBtn.setAttribute('aria-label', 'Close');
   const top = el('div', 'rprTop rpPopTop');
   top.append(eyebrow, moreBtn, closeBtn);
 

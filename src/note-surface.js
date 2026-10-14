@@ -29,33 +29,34 @@ const SURFACE_CSS = `
   .laMarkers { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99991; pointer-events: none; }
   .laInkLayer { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99990; pointer-events: none; }
   .laMarks { position: absolute; overflow: visible; pointer-events: none; }
-  .laBox { position: absolute; border: 2px solid #e5484d; background: rgba(229, 72, 77, .12); box-sizing: border-box; }
+  .laBox { position: absolute; border: 2px solid #A83A2C; background: rgba(168, 58, 44, .10); box-sizing: border-box; }
   .laBox.el { background: transparent; }
   /* The tag carries its comment's number, which is what the list, the strip and
      the export all call it. A point marker IS its own tag rather than wearing a
-     second one. */
-  .laBox .tag { position: absolute; top: -9px; left: -9px; min-width: 17px; height: 17px; padding: 0 3px; box-sizing: border-box;
-    display: flex; align-items: center; justify-content: center; border-radius: 9px;
-    background: #e5484d; color: #FDFDFC; border: 2px solid #FDFDFC;
-    font: 700 10px/13px ui-monospace, "SF Mono", Menlo, monospace; pointer-events: auto; cursor: pointer; }
-  .laBox.laPoint { min-width: 17px; height: 17px; width: auto; padding: 0 3px; margin: -8.5px 0 0 -8.5px; border-radius: 9px;
-    display: flex; align-items: center; justify-content: center; background: #e5484d; color: #FDFDFC; border-color: #FDFDFC;
-    font: 700 10px/13px ui-monospace, "SF Mono", Menlo, monospace; pointer-events: auto; cursor: pointer; }
-  .laBox.hot { outline: 2px solid #e5484d; outline-offset: 2px; }
+     second one. Square, in Bevel's ox on its cream. */
+  .laBox .tag { position: absolute; top: -10px; left: -10px; min-width: 19px; height: 19px; padding: 0 4px; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; border-radius: 0;
+    background: #A83A2C; color: #FFFCF6; border: 2px solid #FFFCF6; box-shadow: 2px 2px 0 rgba(43, 36, 27, .25);
+    font: 600 10px/13px "redpen Plex Mono", ui-monospace, "SF Mono", Menlo, monospace; pointer-events: auto; cursor: pointer; }
+  .laBox.laPoint { min-width: 19px; height: 19px; width: auto; padding: 0 4px; margin: -9.5px 0 0 -9.5px; border-radius: 0;
+    display: flex; align-items: center; justify-content: center; background: #A83A2C; color: #FFFCF6; border-color: #FFFCF6;
+    box-shadow: 2px 2px 0 rgba(43, 36, 27, .25);
+    font: 600 10px/13px "redpen Plex Mono", ui-monospace, "SF Mono", Menlo, monospace; pointer-events: auto; cursor: pointer; }
+  .laBox.hot { outline: 2px solid #A83A2C; outline-offset: 2px; }
   .laBox .tag.working, .laBox.laPoint.working { animation: laPulse 1.1s ease-in-out infinite; }
   @keyframes laPulse { 0%, 100% { opacity: 1 } 50% { opacity: .4 } }
-  .laBox .tag:hover, .laBox.laPoint:hover { background: #17110C; }
-  .laBox .tag.unread, .laBox.laPoint.unread { box-shadow: 0 0 0 3px rgba(229, 72, 77, .4); }
-  .laHover { position: absolute; border: 1.5px dashed #e5484d; background: rgba(229, 72, 77, .07); box-sizing: border-box; }
+  .laBox .tag:hover, .laBox.laPoint:hover { background: #2B241B; }
+  .laBox .tag.unread, .laBox.laPoint.unread { box-shadow: 0 0 0 3px rgba(168, 58, 44, .4); }
+  .laHover { position: absolute; border: 1.5px dashed #A83A2C; background: rgba(168, 58, 44, .06); box-sizing: border-box; }
   .laOverlay { position: fixed; inset: 0; z-index: 99992; display: none; touch-action: none; }
   .laReqs { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; z-index: 99991; pointer-events: none; }
-  .laReq { position: absolute; margin: -9px 0 0 3px; min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box;
-    border: 0; border-radius: 9px; background: #e5484d; color: #fff; cursor: pointer;
-    font: 700 11px/17px -apple-system, sans-serif; text-align: center; pointer-events: auto; }
-  .laReq:hover { background: #17110C; }
-  .laReq.done { background: #B7B3AE; }
-  .laReq.stale { box-shadow: 0 0 0 2px #E8A33D; }
-  .laReq.on { box-shadow: 0 0 0 3px rgba(229, 72, 77, .35); }
+  .laReq { position: absolute; margin: -9px 0 0 3px; min-width: 19px; height: 19px; padding: 0 4px; box-sizing: border-box;
+    border: 2px solid; border-color: #C2604F #5A1A12 #5A1A12 #C2604F; border-radius: 0; background: #A83A2C; color: #FFFCF6; cursor: pointer;
+    font: 600 11px/15px "redpen Plex Mono", ui-monospace, "SF Mono", Menlo, monospace; text-align: center; pointer-events: auto; }
+  .laReq:hover { background: #2B241B; }
+  .laReq.done { background: #9A8A70; border-color: #C4B192 #6B5942 #6B5942 #C4B192; }
+  .laReq.stale { box-shadow: 0 0 0 2px #8F6310; }
+  .laReq.on { box-shadow: 0 0 0 3px rgba(168, 58, 44, .35); }
 `;
 
 // A chip, and the popover that opens from it, sit just past the END of what they

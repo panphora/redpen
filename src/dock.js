@@ -9,58 +9,126 @@
 import { mark, chrome } from './mark.js';
 import { RUNNING } from './thread.js';
 import { CANCELLABLE, turnLine, dotClass, firstLine, elementLabel, copyText } from './popover.js';
+import { bevelIcon } from '@panphora/bevel/icons';
 
 const CSS = `
+  /* Bevel's look, scoped to redpen's own chrome. bevel.css itself is never
+     loaded: it styles :root, body and .dark, which belong to the page under
+     review. The values are Bevel's tokens, one set per theme, because the theme
+     here comes from the probe below and not from the page's color-scheme. */
+  @font-face { font-family: "redpen Plex Mono"; font-weight: 400; font-display: swap;
+    src: local("IBM Plex Mono"), local("IBMPlexMono"),
+      url(https://cdn.jsdelivr.net/npm/@panphora/bevel@0.1.1/fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family: "redpen Plex Mono"; font-weight: 500; font-display: swap;
+    src: local("IBM Plex Mono Medium"), local("IBMPlexMono-Medium"),
+      url(https://cdn.jsdelivr.net/npm/@panphora/bevel@0.1.1/fonts/ibm-plex-mono-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family: "redpen Plex Mono"; font-weight: 600; font-display: swap;
+    src: local("IBM Plex Mono SemiBold"), local("IBMPlexMono-SemiBold"),
+      url(https://cdn.jsdelivr.net/npm/@panphora/bevel@0.1.1/fonts/ibm-plex-mono-latin-600-normal.woff2) format("woff2"); }
+
   .rpDock, .rprPop, .rprTip, .rpToast {
-    --rp-paper: #FDFDFC; --rp-sunk: #EFEDE9; --rp-ink: #17110C; --rp-ink2: #463F38; --rp-faint: #8A857E;
-    --rp-line: #DCD8D2; --rp-line2: #C6C1B9; --rp-flag: #D2373D; --rp-flag-soft: rgba(210,55,61,.10);
-    --rp-flag-edge: rgba(210,55,61,.34); --rp-ok: #2F7D48;
-    --rp-shadow: 0 1px 2px rgba(23,17,12,.06), 0 12px 34px -16px rgba(23,17,12,.30);
-    --rp-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --rp-ground: #FDF8F0; --rp-paper: #FFFCF6; --rp-sunk: #F4ECDF;
+    --rp-ink: #2B241B; --rp-ink2: #4A4033; --rp-muted: #6B5942; --rp-faint: #9A8A70;
+    --rp-line: #E8DCC6; --rp-line2: #D8C8AF; --rp-line3: #C4B192;
+    --rp-brass: #8F6310; --rp-brass-soft: #F0E4CC;
+    --rp-flag: #A83A2C; --rp-flag-soft: #F6DED6; --rp-ok: #256056;
+    --rp-face: #F1E7D4; --rp-edge-hi: #FFF9ED; --rp-edge-lo: #D6C3A5;
+    --rp-face-in: #E3D0B3; --rp-edge-in: #B89F7B; --rp-edge-in-hi: #F0E1C9;
+    --rp-ox-face: #7A2A1F; --rp-ox-edge-hi: #AE4F3E; --rp-ox-edge-lo: #451510; --rp-ox-ink: #FBEEE8;
+    --rp-shadow: 6px 6px 0 color-mix(in srgb, var(--rp-ink) 10%, transparent);
+    --rp-mono: "redpen Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color-scheme: light;
   }
   [data-rp-theme="dark"].rpDock, [data-rp-theme="dark"].rprPop, [data-rp-theme="dark"].rprTip,
   [data-rp-theme="dark"].rpToast {
-    --rp-paper: #181D25; --rp-sunk: #1F252F; --rp-ink: #E6EAF1; --rp-ink2: #C3CAD5; --rp-faint: #77808E;
-    --rp-line: #2A313C; --rp-line2: #3A4350; --rp-flag: #F2646A; --rp-flag-soft: rgba(242,100,106,.14);
-    --rp-flag-edge: rgba(242,100,106,.40); --rp-ok: #63C083;
-    --rp-shadow: 0 1px 2px rgba(0,0,0,.4), 0 14px 34px -16px rgba(0,0,0,.7);
+    --rp-ground: #0B0C13; --rp-paper: #11131E; --rp-sunk: #1A1D2C;
+    --rp-ink: #ECEAF2; --rp-ink2: #C9CDE0; --rp-muted: #8A90AB; --rp-faint: #6A7090;
+    --rp-line: #262B42; --rp-line2: #353B52; --rp-line3: #46506E;
+    --rp-brass: #D9A445; --rp-brass-soft: #3A2F17;
+    --rp-flag: #FF5566; --rp-flag-soft: #3A2226; --rp-ok: #63AE9E;
+    --rp-face: #22273E; --rp-edge-hi: #3C4260; --rp-edge-lo: #1B2033;
+    --rp-face-in: #28304D; --rp-edge-in: #1F2339; --rp-edge-in-hi: #4D587A;
+    --rp-ox-face: #842E22; --rp-ox-edge-hi: #B85A47; --rp-ox-edge-lo: #3E1410; --rp-ox-ink: #FBEEE8;
+    --rp-shadow: 6px 6px 0 rgba(0, 0, 0, .45);
+    color-scheme: dark;
   }
 
   /* Scoped, never global: the mockup's bare [hidden] rule would reach into the
      page being reviewed. Buttons and textareas set their own display, which
      outranks the UA rule and would leave a "hidden" control on screen. */
   .rpDock [hidden], .rprPop [hidden], .rpDock[hidden], .rprPop[hidden] { display: none !important; }
+  .rpDock *, .rprPop *, .rpToast * { box-sizing: border-box; }
+  .rpDock :focus-visible, .rprPop :focus-visible, .rpToast :focus-visible {
+    outline: 2px solid var(--rp-brass); outline-offset: 2px; }
+  .rpDock svg, .rprPop svg { display: block; flex: none; }
+
+  /* Bevel's raised button: light top and left, dark right and bottom, real
+     borders so the corners mitre. Pressed, the edges swap. */
+  .rpDock .rpExport button, .rprPop .rpPopFoot button, .rpDock .rpConfirm button.go,
+  .rprPop .rpConfirm button.go {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 26px; padding: 0 9px; font: 500 11.5px/1 var(--rp-mono); letter-spacing: .02em;
+    color: var(--rp-ink); background: var(--rp-face); border: 2px solid;
+    border-color: var(--rp-edge-hi) var(--rp-edge-lo) var(--rp-edge-lo) var(--rp-edge-hi);
+    border-radius: 0; cursor: pointer; white-space: nowrap; }
+  .rpDock .rpExport button:hover, .rprPop .rpPopFoot button:hover {
+    background: color-mix(in srgb, var(--rp-face), var(--rp-edge-hi) 45%); }
+  .rpDock .rpExport button:active:not([disabled]), .rprPop .rpPopFoot button:active,
+  .rpDock .rpConfirm button.go:active, .rprPop .rpConfirm button.go:active {
+    border-color: var(--rp-edge-lo) var(--rp-edge-hi) var(--rp-edge-hi) var(--rp-edge-lo); }
+  /* primary: ink acts */
+  .rpDock .rpExport .rpSend, .rpDock .rpExport.solid .rpCopy, .rprPop .rpPopFoot .rpRight {
+    --rp-face: var(--rp-ink);
+    --rp-edge-hi: color-mix(in srgb, var(--rp-ink), white 24%);
+    --rp-edge-lo: color-mix(in srgb, var(--rp-ink), black 32%);
+    color: var(--rp-ground); }
+  .rpDock .rpExport .rpSend:hover, .rpDock .rpExport.solid .rpCopy:hover, .rprPop .rpPopFoot .rpRight:hover {
+    background: color-mix(in srgb, var(--rp-ink), var(--rp-ground) 12%); }
+  /* danger: ox destroys */
+  .rpDock .rpConfirm button.go, .rprPop .rpConfirm button.go {
+    --rp-face: var(--rp-ox-face); --rp-edge-hi: var(--rp-ox-edge-hi); --rp-edge-lo: var(--rp-ox-edge-lo);
+    color: var(--rp-ox-ink); }
+  .rpDock .rpConfirm button.go:hover, .rprPop .rpConfirm button.go:hover {
+    background: color-mix(in srgb, var(--rp-ox-face), var(--rp-ox-edge-hi) 40%); }
+  .rpDock .rpExport button[disabled] {
+    --rp-face: var(--rp-sunk); --rp-edge-hi: var(--rp-paper); --rp-edge-lo: var(--rp-line2);
+    color: var(--rp-faint); cursor: default; }
+  .rpDock .rpExport button[disabled]:hover { background: var(--rp-sunk); }
 
   /* the dock */
   .rpDock { position: fixed; right: 14px; z-index: 99995; display: flex; flex-direction: column;
-    align-items: stretch; gap: 6px; width: 322px;
-    font: 12px/1.45 var(--rp-mono); letter-spacing: .03em; color: var(--rp-ink); }
+    align-items: stretch; gap: 8px; width: 330px;
+    font: 12px/1.45 var(--rp-mono); letter-spacing: .02em; color: var(--rp-ink); }
   /* one class, so a host rule of equal specificity later in the cascade wins */
   .rprBar { bottom: 14px; }
-  .rpDock .rpBar { display: flex; align-items: center; gap: 4px; align-self: flex-end;
-    background: var(--rp-paper); border: 1px solid var(--rp-line); border-radius: 9px; padding: 4px;
+  .rpDock .rpBar { display: flex; align-items: center; gap: 3px; align-self: flex-end;
+    background: var(--rp-paper); border: 1px solid var(--rp-line2); border-radius: 0; padding: 4px;
     box-shadow: var(--rp-shadow); }
-  .rpDock[data-mode] .rpBar { border-color: var(--rp-flag); box-shadow: var(--rp-shadow), 0 0 0 3px var(--rp-flag-soft); }
+  .rpDock[data-mode] .rpBar { border-color: var(--rp-flag); }
   .rpDock.failed .rpBar { border-color: var(--rp-flag); }
+  /* Bevel's flat icon button, pressed in when its mode is on */
   .rpDock .rpIcon { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
-    border: 0; border-radius: 6px; background: none; color: var(--rp-ink2); cursor: pointer; padding: 0; }
+    border: 2px solid transparent; border-radius: 0; background: none; color: var(--rp-muted);
+    cursor: pointer; padding: 0; }
   .rpDock .rpIcon:hover { background: var(--rp-sunk); color: var(--rp-ink); }
-  .rpDock .rpIcon.on { background: var(--rp-flag); color: var(--rp-paper); }
-  .rpDock .rpIcon svg { display: block; }
-  .rpDock .rpDiv { width: 1px; height: 19px; background: var(--rp-line); margin: 0 3px; }
-  .rpDock .rpList, .rpDock .rpMore, .rpDock .rpCopy, .rpDock .rpSend, .rpDock .rprStep {
-    font: inherit; letter-spacing: inherit; border: 0; background: none;
-    color: var(--rp-faint); border-radius: 6px; padding: 6px 8px; cursor: pointer; }
-  .rpDock .rpList:hover, .rpDock .rpMore:hover, .rpDock .rpCopy:hover,
-  .rpDock .rpSend:hover, .rpDock .rprStep:hover { background: var(--rp-sunk); color: var(--rp-ink); }
-  .rpDock .rpList { color: var(--rp-ink); font-variant-numeric: tabular-nums; display: flex; gap: 4px; align-items: center; }
-  .rpDock .rpCar { color: var(--rp-faint); font-size: 9px; }
-  .rpDock .rpList.on, .rpDock .rpMore.on { background: var(--rp-sunk); color: var(--rp-ink); }
+  .rpDock .rpIcon.on { background: var(--rp-face-in); color: var(--rp-flag);
+    border-color: var(--rp-edge-in) var(--rp-edge-in-hi) var(--rp-edge-in-hi) var(--rp-edge-in); }
+  .rpDock .rpIcon.on svg { translate: 1px 1px; }
+  .rpDock .rpDiv { width: 1px; height: 20px; background: var(--rp-line2); margin: 0 3px; }
+  .rpDock .rpList, .rpDock .rpMore, .rpDock .rprStep {
+    font: inherit; letter-spacing: inherit; border: 0; background: none; height: 30px;
+    color: var(--rp-muted); border-radius: 0; padding: 0 7px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; }
+  .rpDock .rpList:hover, .rpDock .rpMore:hover, .rpDock .rprStep:hover { background: var(--rp-sunk); color: var(--rp-ink); }
+  .rpDock .rpList { color: var(--rp-ink); font-weight: 500; font-variant-numeric: tabular-nums; gap: 3px; }
+  .rpDock .rpCar { color: var(--rp-faint); display: inline-flex; }
+  .rpDock .rpCar.open svg { rotate: 180deg; }
+  .rpDock .rpList.on, .rpDock .rpMore.on { background: var(--rp-face-in); color: var(--rp-ink); }
   .rpDock .rpStepper { display: flex; align-items: center; }
-  .rpDock .rprStep { padding: 6px 5px; }
+  .rpDock .rprStep { padding: 0 4px; }
   .rpDock .rprCount { color: var(--rp-ink); padding: 0 2px; font-variant-numeric: tabular-nums; }
   .rpDock .rpWire { margin: 0 5px; cursor: pointer; }
-  .rpDock .rpDot, .rprPop .rprDot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  .rpDock .rpDot, .rprPop .rprDot { display: inline-block; width: 8px; height: 8px; border-radius: 0;
     flex: none; background: var(--rp-faint); }
   .rpDock .rpDot.working, .rprPop .rprDot.working { background: var(--rp-flag); animation: rpPulse 1.1s ease-in-out infinite; }
   .rpDock .rpDot.done, .rprPop .rprDot.done, .rpDock .rpDot.ok { background: var(--rp-ok); }
@@ -68,98 +136,92 @@ const CSS = `
   .rpDock .rpDot.unsent { background: none; border: 1.5px solid var(--rp-faint); }
   @keyframes rpPulse { 0%, 100% { opacity: 1 } 50% { opacity: .4 } }
 
-  /* the export pill: one control when there is no agent, two when there is */
-  .rpDock .rpExport { display: inline-flex; border: 1px solid var(--rp-line2); border-radius: 6px;
-    overflow: hidden; margin-left: 2px; }
-  .rpDock .rpExport button { border-radius: 0; padding: 5px 9px; color: var(--rp-ink); }
-  .rpDock .rpExport .rpSend:not([hidden]) + .rpCopy { border-left: 1px solid var(--rp-line); }
-  .rpDock .rpExport button[disabled] { color: var(--rp-faint); cursor: default; }
-  .rpDock .rpExport button[disabled]:hover { background: none; color: var(--rp-faint); }
-  .rpDock .rpExport.solid { border-color: var(--rp-ink); }
-  .rpDock .rpExport.solid .rpCopy { background: var(--rp-ink); color: var(--rp-paper); }
-  .rpDock .rpExport.solid .rpCopy:hover { background: var(--rp-ink); color: var(--rp-paper); }
+  /* the export: one button when there is no agent, two when there is */
+  .rpDock .rpExport { display: inline-flex; gap: 4px; margin-left: 4px; }
 
   /* the strip: the minimized comment area, one line */
   .rpDock .rpStrip { display: flex; align-items: center; gap: 8px; background: var(--rp-paper);
-    border: 1px solid var(--rp-line); border-radius: 8px; padding: 7px 9px; box-shadow: var(--rp-shadow);
+    border: 1px solid var(--rp-line2); border-radius: 0; padding: 7px 9px; box-shadow: var(--rp-shadow);
     cursor: pointer; }
-  .rpDock .rpStrip:hover { border-color: var(--rp-line2); }
-  .rpDock .rpStrip .rpN { color: var(--rp-flag); font-weight: 700; flex: none; font-variant-numeric: tabular-nums; }
+  .rpDock .rpStrip:hover { border-color: var(--rp-line3); }
+  .rpDock .rpStrip .rpN { color: var(--rp-flag); font-weight: 600; flex: none; font-variant-numeric: tabular-nums; }
   .rpDock .rpStrip .rpSaid { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; color: var(--rp-ink); }
   .rpDock .rpStrip .rpSaid.dim { color: var(--rp-faint); }
   .rpDock .rpStrip button { font: inherit; letter-spacing: inherit; border: 0; background: none;
-    color: var(--rp-faint); border-radius: 5px; padding: 2px 6px; cursor: pointer; flex: none; }
-  .rpDock .rpStrip button:hover { background: var(--rp-sunk); color: var(--rp-ink); }
+    color: var(--rp-brass); border-radius: 0; padding: 2px 6px; cursor: pointer; flex: none; }
+  .rpDock .rpStrip button:hover { background: var(--rp-sunk); }
 
   /* the mode hint */
   .rpDock .rpHint { align-self: flex-end; display: flex; align-items: center; gap: 8px;
-    background: var(--rp-ink); color: var(--rp-paper); border-radius: 7px; padding: 6px 10px;
+    background: var(--rp-ink); color: var(--rp-ground); border-radius: 0; padding: 6px 10px;
     font-size: 11px; letter-spacing: .05em; box-shadow: var(--rp-shadow); }
-  .rpDock .rpHint kbd { font: inherit; border: 1px solid rgba(255,255,255,.35); border-radius: 3px;
-    padding: 0 4px; opacity: .85; }
+  .rpDock .rpHint kbd { font: inherit; border: 1px solid color-mix(in srgb, var(--rp-ground) 40%, transparent);
+    border-radius: 0; padding: 0 4px; opacity: .85; }
 
   /* the panel */
-  .rpDock .rpPanel { background: var(--rp-paper); border: 1px solid var(--rp-line); border-radius: 9px;
+  .rpDock .rpPanel { background: var(--rp-paper); border: 1px solid var(--rp-line2); border-radius: 0;
     box-shadow: var(--rp-shadow); overflow: hidden; max-height: min(64vh, 440px);
     display: flex; flex-direction: column; }
   .rpDock .rpPhead { display: flex; align-items: center; gap: 8px; padding: 9px 11px;
-    border-bottom: 1px solid var(--rp-line); font-size: 10px; letter-spacing: .14em;
-    text-transform: uppercase; color: var(--rp-faint); flex: none; }
+    border-bottom: 1px solid var(--rp-line); font: 500 10.5px/1.4 var(--rp-mono); letter-spacing: .08em;
+    text-transform: uppercase; color: var(--rp-muted); flex: none; }
   .rpDock .rpPhead .sp { flex: 1; }
   .rpDock .rpPhead button { font: inherit; letter-spacing: inherit; text-transform: inherit; border: 0;
-    background: none; color: var(--rp-faint); cursor: pointer; border-radius: 4px; padding: 2px 5px; }
-  .rpDock .rpPhead button:hover { background: var(--rp-sunk); color: var(--rp-ink); }
-  .rpDock .rpPbody { overflow-y: auto; padding: 5px; }
+    background: none; color: var(--rp-brass); cursor: pointer; border-radius: 0; padding: 2px 5px; }
+  .rpDock .rpPhead button:hover { background: var(--rp-sunk); }
+  .rpDock .rpPbody { overflow-y: auto; padding: 6px; }
   .rpDock .rpItem { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left;
     border: 0; background: none; color: var(--rp-ink); font: inherit; letter-spacing: inherit;
-    border-radius: 6px; padding: 7px 8px; cursor: pointer; }
+    border-radius: 0; padding: 8px 9px; cursor: pointer; }
   .rpDock .rpItem:hover { background: var(--rp-sunk); }
-  .rpDock .rpItem .n { color: var(--rp-flag); font-weight: 700; flex: none;
+  .rpDock .rpItem .n { color: var(--rp-flag); font-weight: 600; flex: none;
     font-variant-numeric: tabular-nums; min-width: 18px; }
   .rpDock .rpItem .said { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rpDock .rpItem .said.dim { color: var(--rp-faint); }
   .rpDock .rpItem .mini { flex: none; color: var(--rp-faint); font-size: 10.5px; }
-  .rpDock .rpRow { display: flex; align-items: center; gap: 6px; padding: 2px 3px; }
+  .rpDock .rpRow { display: flex; align-items: center; gap: 4px; }
+  .rpDock .rpRow + .rpRow { border-top: 1px solid var(--rp-line); }
   .rpDock .rpRow .rpItem { flex: 1; }
   .rpDock .rpRow .sub { font: inherit; letter-spacing: inherit; border: 0; background: none;
-    color: var(--rp-faint); border-radius: 5px; padding: 5px 7px; cursor: pointer; flex: none; }
+    color: var(--rp-faint); border-radius: 0; padding: 5px 7px; cursor: pointer; flex: none; }
   .rpDock .rpRow .sub:hover { background: var(--rp-sunk); color: var(--rp-ink); }
   .rpDock .rpRow .sub.danger:hover { background: var(--rp-flag-soft); color: var(--rp-flag); }
-  .rpDock .rpEmpty { padding: 16px 12px; color: var(--rp-faint); text-align: center; font-size: 11.5px; }
-  .rpDock .rpNote { padding: 4px 11px 8px; color: var(--rp-faint); font-size: 11px; line-height: 1.5; }
+  .rpDock .rpEmpty { padding: 18px 12px; color: var(--rp-faint); text-align: center; font-size: 11.5px; }
+  .rpDock .rpNote { padding: 6px 11px 8px; color: var(--rp-faint); font-size: 11px; line-height: 1.5; }
 
-  /* the menu */
-  .rpDock .rpMenu { padding: 5px; }
-  .rpDock .rpMenu button.mi { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  /* the menu: Bevel's popover menu */
+  .rpDock .rpMenu { padding: 6px; }
+  .rpDock .rpMenu button.mi { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
     border: 0; background: none; color: var(--rp-ink); font: inherit; letter-spacing: inherit;
-    border-radius: 6px; padding: 8px 9px; cursor: pointer; }
+    border-radius: 0; padding: 8px 10px; cursor: pointer; }
   .rpDock .rpMenu button.mi:hover { background: var(--rp-sunk); }
-  .rpDock .rpMenu button.mi .k { margin-left: auto; color: var(--rp-faint); font-size: 10.5px; }
-  .rpDock .rpMenu button.mi.danger:hover { background: var(--rp-flag-soft); color: var(--rp-flag); }
+  .rpDock .rpMenu button.mi .k { margin-left: auto; padding: 1px 5px; border: 1px solid var(--rp-line2);
+    color: var(--rp-muted); font-size: 10px; }
+  .rpDock .rpMenu button.mi.danger { color: var(--rp-flag); }
+  .rpDock .rpMenu button.mi.danger:hover { background: var(--rp-flag-soft); }
   .rpDock .rpMenu button.mi[disabled] { color: var(--rp-faint); cursor: default; }
   .rpDock .rpMenu button.mi[disabled]:hover { background: none; }
   .rpDock .rpMenu .sep { height: 1px; background: var(--rp-line); margin: 5px 3px; }
-  .rpDock .rpMenu .grp { padding: 7px 9px 4px; font-size: 9.5px; letter-spacing: .14em;
-    text-transform: uppercase; color: var(--rp-faint); }
-  .rpDock .rpMenu .status { display: flex; align-items: center; gap: 9px; padding: 8px 9px;
-    color: var(--rp-faint); }
-  .rpDock .rpMenu label.mi { display: flex; align-items: center; gap: 9px; padding: 6px 9px;
-    cursor: pointer; border-radius: 6px; }
+  .rpDock .rpMenu .grp { padding: 8px 10px 4px; font: 500 10px/1.4 var(--rp-mono); letter-spacing: .08em;
+    text-transform: uppercase; color: var(--rp-muted); }
+  .rpDock .rpMenu .status { display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    color: var(--rp-muted); }
+  .rpDock .rpMenu label.mi { display: flex; align-items: center; gap: 10px; padding: 6px 10px;
+    cursor: pointer; border-radius: 0; }
   .rpDock .rpMenu label.mi:hover { background: var(--rp-sunk); }
-  .rpDock .rpMenu label.mi input { accent-color: var(--rp-flag); margin: 0; }
-  .rpDock .rpConfirm { display: flex; align-items: center; gap: 6px; padding: 8px 9px;
-    background: var(--rp-flag-soft); border-radius: 6px; color: var(--rp-ink); }
+  .rpDock .rpMenu label.mi input { accent-color: var(--rp-brass); margin: 0; }
+  .rpDock .rpConfirm { display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+    background: var(--rp-flag-soft); border-left: 2px solid var(--rp-flag); color: var(--rp-ink); }
   .rpDock .rpConfirm .sp { flex: 1; }
-  .rpDock .rpConfirm button { font: inherit; letter-spacing: inherit; border: 0; border-radius: 5px;
-    padding: 4px 8px; cursor: pointer; background: none; color: var(--rp-faint); }
-  .rpDock .rpConfirm button:hover { background: var(--rp-sunk); color: var(--rp-ink); }
-  .rpDock .rpConfirm button.go { background: var(--rp-flag); color: var(--rp-paper); }
-  .rpDock .rpConfirm button.go:hover { background: var(--rp-flag); opacity: .86; color: var(--rp-paper); }
-  .rpDock .rpKeys { padding: 4px 9px 9px; color: var(--rp-faint); font-size: 11px; line-height: 1.9; }
-  .rpDock .rpKeys div { display: flex; gap: 9px; align-items: baseline; }
-  .rpDock .rpKeys kbd { font: inherit; border: 1px solid var(--rp-line2); border-radius: 3px;
-    padding: 0 4px; color: var(--rp-ink); flex: none; min-width: 74px; text-align: center; }
+  .rpDock .rpConfirm button:not(.go) { font: inherit; letter-spacing: inherit; border: 0; border-radius: 0;
+    padding: 4px 8px; cursor: pointer; background: none; color: var(--rp-muted); }
+  .rpDock .rpConfirm button:not(.go):hover { color: var(--rp-ink); }
+  .rpDock .rpKeys { padding: 4px 10px 10px; color: var(--rp-muted); font-size: 11px; line-height: 1.9; }
+  .rpDock .rpKeys div { display: flex; gap: 10px; align-items: baseline; }
+  .rpDock .rpKeys kbd { font: 500 10.5px/1.6 var(--rp-mono); border: 1px solid var(--rp-line2);
+    border-bottom-width: 2px; border-radius: 0; background: var(--rp-sunk);
+    padding: 0 5px; color: var(--rp-ink); flex: none; min-width: 74px; text-align: center; }
   .rpDock .rpWarn { padding: 9px 11px; background: var(--rp-flag-soft); color: var(--rp-flag);
     font-size: 11px; line-height: 1.5; border-bottom: 1px solid var(--rp-line); }
 
@@ -170,94 +232,89 @@ const CSS = `
 
   /* the on-element popover */
   .rprPop { position: fixed; z-index: 99996; box-sizing: border-box; width: 352px;
-    max-width: calc(100vw - 28px); background: var(--rp-paper); border: 1px solid var(--rp-line);
-    border-radius: 9px; padding: 11px 12px; box-shadow: var(--rp-shadow);
-    font: 12.5px/1.5 var(--rp-mono); letter-spacing: .02em; color: var(--rp-ink); }
-  .rprPop .rpPopTop { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; cursor: move; }
-  .rprPop .rprEyebrow { flex: 1; font-size: 10px; letter-spacing: .13em; text-transform: uppercase;
-    color: var(--rp-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rprPop .rprX { font: inherit; color: var(--rp-faint); background: none; border: 0; cursor: pointer;
-    padding: 1px 5px; border-radius: 5px; line-height: 1.2; }
+    max-width: calc(100vw - 28px); background: var(--rp-paper); border: 1px solid var(--rp-line2);
+    border-radius: 0; padding: 10px 12px 12px; box-shadow: var(--rp-shadow);
+    font: 12.5px/1.5 var(--rp-mono); letter-spacing: .01em; color: var(--rp-ink); }
+  .rprPop .rpPopTop { display: flex; align-items: center; gap: 2px; margin: 0 -4px 9px 0;
+    padding-bottom: 7px; border-bottom: 1px solid var(--rp-line); cursor: move; }
+  .rprPop .rprEyebrow { flex: 1; font: 500 10.5px/1.4 var(--rp-mono); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--rp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rprPop .rprX { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+    color: var(--rp-muted); background: none; border: 0; cursor: pointer; padding: 0; border-radius: 0; }
   .rprPop .rprX:hover { background: var(--rp-sunk); color: var(--rp-ink); }
-  .rprPop .rpPopMenu { border: 1px solid var(--rp-line); border-radius: 7px; padding: 4px;
-    margin-bottom: 9px; background: var(--rp-sunk); }
+  .rprPop .rpPopMenu { border: 1px solid var(--rp-line2); border-radius: 0; padding: 4px;
+    margin-bottom: 10px; background: var(--rp-paper); box-shadow: var(--rp-shadow); }
   .rprPop .rpPopMenu button { display: flex; width: 100%; text-align: left; border: 0; background: none;
-    font: inherit; letter-spacing: inherit; color: var(--rp-ink); border-radius: 5px; padding: 6px 8px;
+    font: inherit; letter-spacing: inherit; color: var(--rp-ink); border-radius: 0; padding: 7px 9px;
     cursor: pointer; }
-  .rprPop .rpPopMenu button:hover { background: var(--rp-paper); }
-  .rprPop .rpPopMenu button.danger:hover { color: var(--rp-flag); }
+  .rprPop .rpPopMenu button:hover { background: var(--rp-sunk); }
+  .rprPop .rpPopMenu button.danger { color: var(--rp-flag); }
+  .rprPop .rpPopMenu button.danger:hover { background: var(--rp-flag-soft); }
   .rprPop .rpConfirm { display: flex; align-items: center; gap: 6px; padding: 6px 8px;
-    background: var(--rp-flag-soft); border-radius: 5px; color: var(--rp-ink); }
+    background: var(--rp-flag-soft); border-left: 2px solid var(--rp-flag); color: var(--rp-ink); }
   .rprPop .rpConfirm .sp { flex: 1; }
-  .rprPop .rpConfirm button { width: auto; font: inherit; border: 0; border-radius: 5px; padding: 3px 8px;
-    cursor: pointer; background: none; color: var(--rp-faint); }
-  .rprPop .rpConfirm button.go { background: var(--rp-flag); color: var(--rp-paper); }
+  .rprPop .rpPopMenu .rpConfirm button { width: auto; }
+  .rprPop .rpConfirm button:not(.go) { font: inherit; border: 0; border-radius: 0; padding: 3px 8px;
+    cursor: pointer; background: none; color: var(--rp-muted); }
   .rprPop .rprQ { margin: 0 0 9px; }
-  .rprPop .rprWas { margin: 0 0 7px; padding: 6px 8px; border-left: 2px solid #E8A33D;
-    color: var(--rp-faint); font-size: 11.5px; }
-  .rprPop .rprWas b { display: block; font-weight: 400; letter-spacing: .1em; text-transform: uppercase;
-    font-size: 9.5px; margin-bottom: 3px; }
-  .rprPop .rprStill { display: block; margin-top: 5px; font: inherit; color: var(--rp-ink);
-    background: none; border: 0; border-bottom: 1px solid #E8A33D; border-radius: 0; padding: 0; cursor: pointer; }
-  .rprPop textarea { display: block; width: 100%; box-sizing: border-box; min-height: 74px; resize: vertical;
-    font: inherit; color: inherit; background: var(--rp-sunk); border: 1px solid var(--rp-line);
-    border-radius: 6px; padding: 8px 9px; }
-  .rprPop textarea:focus { outline: 0; border-color: var(--rp-line2); box-shadow: 0 0 0 3px var(--rp-flag-soft); }
-  .rprPop .rpPopFoot { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .rprPop .rprWas { margin: 0 0 8px; padding: 6px 9px; border-left: 2px solid var(--rp-brass);
+    background: var(--rp-brass-soft); color: var(--rp-ink2); font-size: 11.5px; }
+  .rprPop .rprWas b { display: block; font-weight: 500; letter-spacing: .08em; text-transform: uppercase;
+    font-size: 9.5px; margin-bottom: 3px; color: var(--rp-brass); }
+  .rprPop .rprStill { display: block; margin-top: 5px; font: inherit; color: var(--rp-brass);
+    background: none; border: 0; border-bottom: 1px solid var(--rp-brass); border-radius: 0; padding: 0; cursor: pointer; }
+  /* Bevel's textarea */
+  .rprPop textarea { display: block; width: 100%; box-sizing: border-box; min-height: 78px; resize: vertical;
+    font: inherit; color: var(--rp-ink); background: var(--rp-ground); border: 1px solid var(--rp-line2);
+    border-radius: 0; padding: 8px 10px; outline: none; transition: border-color .14s; }
+  .rprPop textarea::placeholder { color: var(--rp-faint); }
+  .rprPop textarea:hover { border-color: var(--rp-faint); }
+  .rprPop textarea:focus { outline: 2px solid var(--rp-brass); outline-offset: 1px; border-color: var(--rp-brass); }
+  .rprPop .rpPopFoot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
   .rprPop .rpPopFoot .rprSpacer { flex: 1; }
-  .rprPop .rpPopFoot button { font: inherit; letter-spacing: inherit; color: var(--rp-ink);
-    background: var(--rp-sunk); border: 1px solid var(--rp-line); border-radius: 6px; padding: 4px 10px;
-    cursor: pointer; }
-  .rprPop .rpPopFoot button:hover { border-color: var(--rp-line2); }
-  .rprPop .rprHint { font-size: 10px; letter-spacing: .11em; text-transform: uppercase; color: var(--rp-faint); }
+  .rprPop .rprHint { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--rp-faint); }
 
   /* The thread. Your words are muted and the reply is full ink, because the
      reply is what you opened this to read. */
-  .rprPop .rprThread { max-height: 38vh; overflow-y: auto; margin: 0 0 9px; }
+  .rprPop .rprThread { max-height: 38vh; overflow-y: auto; margin: 0 0 10px; }
   .rprPop .rprTurn + .rprTurn { border-top: 1px solid var(--rp-line); margin-top: 10px; padding-top: 10px; }
-  .rprPop .rprWho { display: flex; align-items: baseline; gap: 8px; margin: 0 0 3px; font-size: 9.5px;
-    letter-spacing: .13em; text-transform: uppercase; color: var(--rp-faint); }
-  .rprPop .rprWhen { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .rprPop .rprWho { display: flex; align-items: baseline; gap: 8px; margin: 0 0 3px; font: 500 9.5px/1.4 var(--rp-mono);
+    letter-spacing: .08em; text-transform: uppercase; color: var(--rp-muted); }
+  .rprPop .rprWhen { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--rp-faint); }
   .rprPop .rprSaid, .rprPop .rprReply, .rprPop .rprMangled { margin: 0 0 6px; white-space: pre-wrap; }
-  .rprPop .rprSaid { color: var(--rp-faint); }
+  .rprPop .rprSaid { color: var(--rp-muted); }
   .rprPop .rprReply { color: var(--rp-ink); }
   .rprPop .rprMangled { color: var(--rp-flag); }
   .rprPop .rprTrail { margin: 0 0 6px; font-size: 11.5px; color: var(--rp-faint); }
   .rprPop .rprTrail summary { cursor: pointer; }
   .rprPop .rprTrail p { margin: 3px 0 0 12px; white-space: pre-wrap; }
-  .rprPop .rprTurnState { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--rp-faint); }
-  .rprPop .rprTurnState button { font: inherit; color: var(--rp-faint); background: none; border: 0;
-    border-radius: 5px; padding: 2px 6px; margin-left: auto; cursor: pointer; }
-  .rprPop .rprTurnState button:hover { background: var(--rp-sunk); color: var(--rp-ink); }
-  .rprPop .rprNow { margin: 2px 0 0 14px; font-size: 11.5px; color: var(--rp-faint); }
+  .rprPop .rprTurnState { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--rp-muted); }
+  .rprPop .rprTurnState button { font: inherit; color: var(--rp-brass); background: none; border: 0;
+    border-radius: 0; padding: 2px 6px; margin-left: auto; cursor: pointer; }
+  .rprPop .rprTurnState button:hover { background: var(--rp-sunk); }
+  .rprPop .rprNow { margin: 2px 0 0 15px; font-size: 11.5px; color: var(--rp-faint); }
 
+  /* Bevel's tooltip */
   .rprTip { position: fixed; z-index: 99997; max-width: 320px; pointer-events: none;
-    font: 11.5px/1.45 var(--rp-mono); color: var(--rp-ink); background: var(--rp-paper);
-    border: 1px solid var(--rp-line); border-radius: 7px; padding: 6px 8px; box-shadow: var(--rp-shadow); }
+    font: 11.5px/1.45 var(--rp-mono); color: var(--rp-ground); background: var(--rp-ink);
+    border: 0; border-radius: 0; padding: 6px 9px; box-shadow: var(--rp-shadow); }
 
-  /* the undo strip after something destructive */
+  /* the undo strip after something destructive: Bevel's toast */
   .rpToast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 99997;
-    display: flex; align-items: center; gap: 10px; background: var(--rp-ink); color: var(--rp-paper);
-    border-radius: 8px; padding: 8px 12px; font: 12px/1 var(--rp-mono); letter-spacing: .04em;
-    box-shadow: var(--rp-shadow); }
-  .rpToast button { font: inherit; letter-spacing: inherit; border: 0; background: none;
-    color: var(--rp-paper); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 0; }
+    display: flex; align-items: center; gap: 12px; background: var(--rp-paper); color: var(--rp-ink);
+    border: 1px solid var(--rp-line2); border-left: 3px solid var(--rp-ink); border-radius: 0;
+    padding: 9px 12px; font: 12px/1 var(--rp-mono); letter-spacing: .02em; box-shadow: var(--rp-shadow); }
+  .rpToast button { font: 500 12px/1 var(--rp-mono); letter-spacing: inherit; border: 0; background: none;
+    color: var(--rp-brass); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 0; }
 
   /* Pointing is read off redpen's own dock, never off a class on the authored
      <body>: body's attributes changing makes the whole body a dirty root, so one
      click on comment mode would protect the entire page from the agent's own edit. */
-  body:has(.rprBar[data-pointing]) main { outline: 1px solid var(--rp-flag, #D2373D); outline-offset: 6px; }
+  body:has(.rprBar[data-pointing]) main { outline: 1px solid var(--rp-flag, #A83A2C); outline-offset: 6px; }
 `;
 
-const BUBBLE = '<svg width="17" height="17" viewBox="0 0 16 16" aria-hidden="true">'
-  + '<path d="M3.9 2.6h8.2A1.75 1.75 0 0 1 13.85 4.35v5A1.75 1.75 0 0 1 12.1 11.1H7.35l-2.9 2.3a.32.32 0 0 1-.52-.25V11.1h-.03A1.75 1.75 0 0 1 2.15 9.35v-5A1.75 1.75 0 0 1 3.9 2.6Z"'
-  + ' fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/></svg>';
-
-const SQUIGGLE = '<svg width="17" height="17" viewBox="0 0 16 16" aria-hidden="true">'
-  + '<path d="M11.2 2.2 13.6 4.6 7.0 11.2 3.8 11.9 4.5 8.8 11.2 2.2Z"'
-  + ' fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round" stroke-linecap="round"/>'
-  + '<path d="M2.3 13.9c1.05-.95 2.1-.95 3.15 0s2.1.95 3.15 0"'
-  + ' fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg>';
+const BUBBLE = bevelIcon('comment', { size: 17 });
+const SQUIGGLE = bevelIcon('pencil', { size: 17 });
 
 const SHORTCUTS = [
   ['C', 'comment mode on / off'],
@@ -400,18 +457,25 @@ export function createDock({ pen, thread, popover, prefs, tools, attr, clickThro
   const div = el('span', 'rpDiv');
   const stepper = el('span', 'rpStepper');
   stepper.hidden = true;
-  const prevBtn = el('button', 'rpPrev rprStep', '‹');
+  const prevBtn = el('button', 'rpPrev rprStep');
+  prevBtn.innerHTML = bevelIcon('chevron-left', { size: 14 });
+  prevBtn.setAttribute('aria-label', 'Previous');
   const countText = el('span', 'rpCount rprCount', '0/0');
-  const nextBtn = el('button', 'rpNext rprStep', '›');
+  const nextBtn = el('button', 'rpNext rprStep');
+  nextBtn.innerHTML = bevelIcon('chevron-right', { size: 14 });
+  nextBtn.setAttribute('aria-label', 'Next');
   stepper.append(prevBtn, countText, nextBtn);
 
   const listBtn = el('button', 'rpList');
   const listN = el('span', 'rpListN', '0');
-  const listCar = el('span', 'rpCar', '▴');
+  const listCar = el('span', 'rpCar');
+  listCar.innerHTML = bevelIcon('chevron-up', { size: 12 });
   listBtn.append(listN, listCar);
 
-  const moreBtn = el('button', 'rpMore', '⋯');
-  moreBtn.title = 'More (⋯)';
+  const moreBtn = el('button', 'rpMore');
+  moreBtn.innerHTML = bevelIcon('more', { size: 18 });
+  moreBtn.title = 'More';
+  moreBtn.setAttribute('aria-label', 'More');
 
   const wireDot = el('span', 'rpWire rpDot rprDot');
   wireDot.hidden = true;
@@ -597,7 +661,7 @@ export function createDock({ pen, thread, popover, prefs, tools, attr, clickThro
     countText.textContent = labelOf(countText, requests.filter(r => r.answered).length + '/' + requests.length);
 
     listN.textContent = String(openComments().length);
-    listCar.textContent = view === 'list' ? '▾' : '▴';
+    listCar.classList.toggle('open', view === 'list');
     listBtn.classList.toggle('on', !!view);
     moreBtn.classList.toggle('on', view === 'menu');
 
