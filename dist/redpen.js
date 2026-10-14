@@ -3224,7 +3224,7 @@
       closeMenu();
       moreBtn.hidden = false;
       resolveAct.textContent = item.resolved ? "Reopen" : "Resolve";
-      eyebrow.textContent = `comment ${item.id} \xB7 ${elementLabel(item.target, item.kind)}`;
+      eyebrow.textContent = "comment";
       question.hidden = true;
       was.hidden = true;
       renderThread();
@@ -3774,8 +3774,7 @@
     max-width: calc(100vw - 28px); background: var(--rp-paper); border: 1px solid var(--rp-line2);
     border-radius: 0; padding: 10px 12px 12px; box-shadow: var(--rp-shadow);
     font: 12.5px/1.5 var(--rp-mono); letter-spacing: .01em; color: var(--rp-ink); }
-  .rprPop .rpPopTop { display: flex; align-items: center; gap: 2px; margin: 0 -4px 9px 0;
-    padding-bottom: 7px; border-bottom: 1px solid var(--rp-line); cursor: move; }
+  .rprPop .rpPopTop { display: flex; align-items: center; gap: 2px; margin: 0 -4px 6px 0; cursor: move; }
   .rprPop .rprEyebrow { flex: 1; font: 500 10.5px/1.4 var(--rp-mono); letter-spacing: .08em; text-transform: uppercase;
     color: var(--rp-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rprPop .rprX { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;

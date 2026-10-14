@@ -330,7 +330,7 @@ export function createPopover({ pen, thread, prefs, toast, onChange, anchor, ste
     closeMenu();
     moreBtn.hidden = false;
     resolveAct.textContent = item.resolved ? 'Reopen' : 'Resolve';
-    eyebrow.textContent = `comment ${item.id} · ${elementLabel(item.target, item.kind)}`;
+    eyebrow.textContent = 'comment';
     question.hidden = true;
     was.hidden = true;
     renderThread();
