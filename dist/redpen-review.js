@@ -3785,7 +3785,7 @@
     style.textContent = CSS2;
     document.head.prepend(style);
   }
-  function createDock({ pen, thread, popover, prefs, tools, attr, clickThrough, keys, active = () => true, mountNode, step }) {
+  function createDock({ pen, thread, popover, prefs, tools, attr, clickThrough, keys, toggle, active = () => true, mountNode, step }) {
     injectStyles();
     let view = null;
     let current = null;
@@ -4206,7 +4206,8 @@
       head("shortcuts", [headBtn("\u2039 open", () => setView("list"))]);
       const b = body();
       const keysBox = el2("div", "rpKeys");
-      for (const [k, said] of SHORTCUTS) {
+      const shortcuts = toggle ? [[toggle, "show or hide redpen"], ...SHORTCUTS] : SHORTCUTS;
+      for (const [k, said] of shortcuts) {
         const line = el2("div");
         line.append(el2("kbd", null, k), el2("span", null, said));
         keysBox.appendChild(line);
@@ -4237,7 +4238,7 @@
       return row;
     }
     function renderMenu() {
-      head("more");
+      head("");
       if (pen.saveFailed()) {
         panel.appendChild(el2(
           "div",
@@ -4660,6 +4661,7 @@
       step,
       clickThrough: opts.clickThrough || "",
       keys: opts.keys !== false,
+      toggle: opts.keys !== false && (opts.toggle === void 0 ? ";;" : opts.toggle),
       active: () => visible
     });
     thread.setOpener((id) => {

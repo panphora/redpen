@@ -403,7 +403,7 @@ function injectStyles() {
   document.head.prepend(style);
 }
 
-export function createDock({ pen, thread, popover, prefs, tools, attr, clickThrough, keys, active = () => true, mountNode, step }) {
+export function createDock({ pen, thread, popover, prefs, tools, attr, clickThrough, keys, toggle, active = () => true, mountNode, step }) {
   injectStyles();
 
   let view = null;         // null | 'list' | 'resolved' | 'orphans' | 'menu' | 'shortcuts'
@@ -865,7 +865,8 @@ export function createDock({ pen, thread, popover, prefs, tools, attr, clickThro
     head('shortcuts', [headBtn('‹ open', () => setView('list'))]);
     const b = body();
     const keysBox = el('div', 'rpKeys');
-    for (const [k, said] of SHORTCUTS) {
+    const shortcuts = toggle ? [[toggle, 'show or hide redpen'], ...SHORTCUTS] : SHORTCUTS;
+    for (const [k, said] of shortcuts) {
       const line = el('div');
       line.append(el('kbd', null, k), el('span', null, said));
       keysBox.appendChild(line);
@@ -893,7 +894,7 @@ export function createDock({ pen, thread, popover, prefs, tools, attr, clickThro
   }
 
   function renderMenu() {
-    head('more');
+    head('');
     if (pen.saveFailed()) {
       panel.appendChild(el('div', 'rpWarn',
         'Not saving. These comments only exist in this tab. Copy JSON before you close it.'));

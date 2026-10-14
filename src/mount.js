@@ -69,6 +69,7 @@ export function mount(opts = {}) {
     pen, thread, popover, prefs, tools, attr, mountNode, step,
     clickThrough: opts.clickThrough || '',
     keys: opts.keys !== false,
+    toggle: opts.keys !== false && (opts.toggle === undefined ? ';;' : opts.toggle),
     active: () => visible,
   });
 
