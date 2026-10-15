@@ -9,7 +9,7 @@
 import { mark, chrome } from './mark.js';
 import { RUNNING } from './thread.js';
 import { CANCELLABLE, turnLine, dotClass, firstLine, elementLabel, copyText } from './popover.js';
-import { bevelIcon } from '@panphora/bevel/icons';
+import { renderIcon, iconComment, iconPencil, iconChevronLeft, iconChevronRight, iconChevronUp, iconMore } from '@panphora/bevel/icons';
 
 const CSS = `
   /* Bevel's look, scoped to redpen's own chrome. bevel.css itself is never
@@ -312,8 +312,8 @@ const CSS = `
   body:has(.rprBar[data-pointing]) main { outline: 1px solid var(--rp-flag, #A83A2C); outline-offset: 6px; }
 `;
 
-const BUBBLE = bevelIcon('comment', { size: 17 });
-const SQUIGGLE = bevelIcon('pencil', { size: 17 });
+const BUBBLE = renderIcon(iconComment, { size: 17 });
+const SQUIGGLE = renderIcon(iconPencil, { size: 17 });
 
 const SHORTCUTS = [
   ['C', 'comment mode on / off'],
@@ -457,22 +457,22 @@ export function createDock({ pen, thread, popover, prefs, tools, attr, clickThro
   const stepper = el('span', 'rpStepper');
   stepper.hidden = true;
   const prevBtn = el('button', 'rpPrev rprStep');
-  prevBtn.innerHTML = bevelIcon('chevron-left', { size: 14 });
+  prevBtn.innerHTML = renderIcon(iconChevronLeft, { size: 14 });
   prevBtn.setAttribute('aria-label', 'Previous');
   const countText = el('span', 'rpCount rprCount', '0/0');
   const nextBtn = el('button', 'rpNext rprStep');
-  nextBtn.innerHTML = bevelIcon('chevron-right', { size: 14 });
+  nextBtn.innerHTML = renderIcon(iconChevronRight, { size: 14 });
   nextBtn.setAttribute('aria-label', 'Next');
   stepper.append(prevBtn, countText, nextBtn);
 
   const listBtn = el('button', 'rpList');
   const listN = el('span', 'rpListN', '0');
   const listCar = el('span', 'rpCar');
-  listCar.innerHTML = bevelIcon('chevron-up', { size: 12 });
+  listCar.innerHTML = renderIcon(iconChevronUp, { size: 12 });
   listBtn.append(listN, listCar);
 
   const moreBtn = el('button', 'rpMore');
-  moreBtn.innerHTML = bevelIcon('more', { size: 18 });
+  moreBtn.innerHTML = renderIcon(iconMore, { size: 18 });
   moreBtn.title = 'More';
   moreBtn.setAttribute('aria-label', 'More');
 
