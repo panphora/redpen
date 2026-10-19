@@ -675,8 +675,8 @@ show-filtering, overshoot binding, resize, persistence and `data()`.
 - `ARCHIVE_PROJECTS/experiments/homepage-illustrations/` — `notes.js`, `draw.js`, `feedback-hub.js`
   there are symlinks into this repo's `src/`; scene pages import them as modules
   (notes via the `lineart.js` import, draw via its own script tag).
-- `the-freelance-rate-calculator/index.html` — loads `dist/redpen.js` through a
-  guarded loader that only runs on `file:` or localhost.
+- `starter-templates/apps/freelance-rate-calculator/RELEASE.htmlclay`: the release
+  checklist gets the standard inlined redpen runtime from `htmlfile runtime`.
 
 ## JSON shape
 
