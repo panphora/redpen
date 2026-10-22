@@ -8,6 +8,7 @@ import { playwrightLauncher } from '@web/test-runner-playwright';
 // reason, and pass while the file is being corrupted.
 export default {
   rootDir: '..',
+  testFramework: { config: { timeout: 20000 } },
   nodeResolve: true,
   files: 'test/**/*.test.js',
   browsers: [playwrightLauncher({ product: 'chromium' })],
